@@ -15,7 +15,7 @@ module.exports = {
 	 * Settings
 	 */
 	settings: {
-		address: '10.60.50.2',
+		address: '10.60.50.1',
 		port: 8088,
 		k3osVersion: 'v0.21.5-k3s2r1',
 		server_url: 'http://10.60.50.1:6443',
