@@ -72,6 +72,27 @@ wget $SOURCE_HTTP/$VERSION/k3os-vmlinuz-amd64
 
 ```
 
+### main.ipxe
+
+```
+#!ipxe
+
+set os_arch amd64
+set k3os_mirror http://10.60.50.1:8088
+set k3os_version v0.21.5-k3s2r1
+set k3os_install_device /dev/sda
+
+set k3os_base_url ${k3os_mirror}/k3os
+
+set k3os_config_url ${k3os_base_url}/config
+
+set install_params k3os.install.silent=true k3os.mode=install k3os.install.config_url=${k3os_config_url} k3os.install.device=${k3os_install_device}
+set boot_params printk.devkmsg=on k3os.install.iso_url=${k3os_base_url}/k3os-${os_arch}.iso console=ttyS0 console=tty1
+imgfree
+kernel ${k3os_base_url}/k3os-vmlinuz-${os_arch} ${install_params} ${boot_params} {{ kernel_params }}
+initrd ${k3os_base_url}/k3os-initrd-${os_arch}
+boot
+```
 
 
 ## Services
