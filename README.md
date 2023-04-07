@@ -1,7 +1,11 @@
 [![Moleculer](https://badgen.net/badge/Powered%20by/Moleculer/0e83cd)](https://moleculer.services)
 
-# bootstrap
-This is a [Moleculer](https://moleculer.services/)-based microservices project. Generated with the [Moleculer CLI](https://moleculer.services/docs/0.14/moleculer-cli.html).
+# Palm-Tree
+> This is a [Moleculer](https://moleculer.services/)-based microservices project. Generated with the [Moleculer CLI](https://moleculer.services/docs/0.14/moleculer-cli.html).
+
+Preboot Execution Environment (PXE) Boot Server
+
+Moleculer service to help facilitate k3os/netbooting 
 
 ## Usage
 
@@ -61,15 +65,13 @@ rm -rf ipxe
 
 k3os netboot files
 ```
-VERSION=v0.21.5-k3s2r1
-SOURCE_HTTP=https://github.com/rancher/k3os/releases/download
+SOURCE_HTTP=https://github.com/rancher/k3os/releases/latest/download
 
 mkdir public/k3os
 cd public/k3os
-wget $SOURCE_HTTP/$VERSION/k3os-amd64.iso
-wget $SOURCE_HTTP/$VERSION/k3os-initrd-amd64
-wget $SOURCE_HTTP/$VERSION/k3os-vmlinuz-amd64
-
+wget $SOURCE_HTTP/k3os-amd64.iso
+wget $SOURCE_HTTP/k3os-initrd-amd64
+wget $SOURCE_HTTP/k3os-vmlinuz-amd64
 ```
 
 ### main.ipxe

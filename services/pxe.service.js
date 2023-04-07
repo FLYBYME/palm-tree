@@ -15,10 +15,10 @@ module.exports = {
 	 * Settings
 	 */
 	settings: {
-		address: '10.60.50.1',
+		address: '10.60.50.2',
 		port: 8088,
 		k3osVersion: 'v0.21.5-k3s2r1',
-		server_url: 'http://10.60.50.1:6443',
+		server_url: 'https://10.60.50.1:6443',
 		token: 'K10ee6a8322a59188a860809a0ce5e39c370c2a4a267dc79fb14c9ba723902cbf7c::server:801c5b7678e8a6470c0141d94157fc71',
 		password: 'mygreatpassword',
 		ssh_authorized_keys: '/home/ubuntu/.ssh/authorized_keys'
@@ -108,20 +108,31 @@ module.exports = {
 		async createTFTPServer() {
 			const server = tftp.createServer({
 				port: 69,
+				root: './public',
 				address: this.settings.address,
 				denyPUT: true
 			}, (req, res) => {
+				if (server._closed) return;
+				if (req._listenerCalled || req._aborted) return;
+				req._listenerCalled = true;
 				req.on("error", (error) => {
 					//Error from the request
-					console.error(error);
+					this.logger.info('tftp', req.stats.remoteAddress, req.file, error.message);
 				});
-console.log(req.stats)
+				this.logger.info('tftp', req.stats.remoteAddress, req.file, `Bootset:${this.bootSet.has(req.stats.remoteAddress)}`)
 				if (this.bootSet.has(req.stats.remoteAddress)) {
 					return;
 				}
 
+				var filename = server.root + "/" + req.file;
+
+				if (req.method === "GET") {
+					server._get(filename, req, res);
+				} else {
+					server._put(filename, req);
+				}
 				//Call the default request listener
-				this.requestListener(req, res);
+				server.requestListener(req, res);
 			});
 			server.host = this.settings.address
 			this.tftpServer = server;
@@ -132,13 +143,15 @@ console.log(req.stats)
 			});
 
 			server.listen();
+
+			this.logger.info(`TFTP server running at tftp://${this.settings.address}:69/`);
 		},
 		async createHTTPServer() {
 
 			const serve = serveStatic('./public')
 
 			const server = http.createServer((req, res) => {
-				console.log(req.url);
+				this.logger.info('http', req.socket.remoteAddress, req.url)
 				if (req.url == '/k3os/config') {
 					this.handleYamlConfig(req, res)
 				} else {
@@ -148,7 +161,7 @@ console.log(req.stats)
 			this.httpServer = server;
 
 			server.listen(this.settings.port, this.settings.address, () => {
-				console.log(`Server running at http://${this.settings.address}:${this.settings.port}/`);
+				this.logger.info(`HTTP server running at http://${this.settings.address}:${this.settings.port}/`);
 			});
 		}
 	},

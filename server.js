@@ -5,6 +5,8 @@ const config=require("./moleculer.config");
 
 const broker = new ServiceBroker(config);
 
+broker.loadServices("./services");
+
 broker.start().then(()=>{
     broker.repl()
 })
