@@ -6,6 +6,7 @@ const serveStatic = require('serve-static')
 const finalhandler = require('finalhandler')
 const http = require('http');
 const fs = require('fs').promises
+const Moniker = require('moniker');
 
 /** @type {ServiceSchema} */
 module.exports = {
@@ -18,8 +19,8 @@ module.exports = {
 		address: '10.60.50.2',
 		port: 8088,
 		k3osVersion: 'v0.21.5-k3s2r1',
-		server_url: 'https://10.60.50.1:6443',
-		token: 'K10ee6a8322a59188a860809a0ce5e39c370c2a4a267dc79fb14c9ba723902cbf7c::server:801c5b7678e8a6470c0141d94157fc71',
+		server_url: 'https://10.60.50.250:6443',
+		token: 'onehostcloudk3s',
 		password: 'mygreatpassword',
 		ssh_authorized_keys: '/home/ubuntu/.ssh/authorized_keys'
 	},
@@ -33,7 +34,7 @@ module.exports = {
 	 * Actions
 	 */
 	actions: {
-		bootSet: {
+		keys: {
 			params: {
 				//user: { type: "string", optional: true }
 			},
@@ -44,6 +45,67 @@ module.exports = {
 				for (const value of this.bootSet.keys()) {
 					data.push(value)
 				}
+				return data
+			}
+		},
+		values: {
+			params: {
+				//user: { type: "string", optional: true }
+			},
+			/** @param {Context} ctx  */
+			async handler(ctx) {
+				const params = Object.assign({}, ctx.params);
+				const data = []
+				for (const value of this.bootSet.values()) {
+					data.push(value)
+				}
+				return data
+			}
+		},
+		writeconfig: {
+			params: {
+				//user: { type: "string", optional: true }
+			},
+			/** @param {Context} ctx  */
+			async handler(ctx) {
+				const params = Object.assign({}, ctx.params);
+				const data = []
+				let dbCount = 0;
+				for (const [ip, json] of this.bootSet.entries()) {
+
+					const labels = {}
+
+					if (ip == '10.60.50.250') {
+						labels["k8s.one-host.ca/control-plane"] = true
+						labels["k8s.one-host.ca/roles-compute"] = false
+						labels["k8s.one-host.ca/roles-dns"] = true
+						labels["k8s.one-host.ca/roles-router"] = true
+					} else {
+						if (dbCount++ < 2) {
+							labels["k8s.one-host.ca/roles-compute"] = false
+							labels["k8s.one-host.ca/roles-database"] = true
+						} else {
+							labels["k8s.one-host.ca/roles-compute"] = true
+						}
+					}
+
+					data.push({
+						"hostname": json.hostname,
+						"fqdn": json.hostname + ".nto.one-host.ca",
+						"username": "rancher",
+						"internal": ip,
+						"cpe": ip,
+						"ipv4": "",
+						"ipv6": "",
+						"wireguard": "",
+						"storage": "flash",
+						"zone": "nto",
+						"labels": labels
+					})
+				}
+
+
+				await fs.writeFile('./config.json', JSON.stringify(data))
 				return data
 			}
 		}
@@ -66,10 +128,40 @@ module.exports = {
 
 			const keys = await fs.readFile(this.settings.ssh_authorized_keys, 'utf8')
 				.then((res) => res.split('\n').filter((str) => str !== ''))
+
 			const ip = req.socket.remoteAddress.replace(/^.*:/, '')
+
+			let isMaster = this.settings.server_url == `https://${ip}:6443`
+			
+			const k3s_args = []
+			if (isMaster) {
+				k3s_args.push(...['server', '--cluster-init', '--disable-cloud-controller', '--cluster-domain=cloud.one-host.ca',
+					'--disable=local-storage',
+					'--disable=servicelb', '--disable=traefik', '--tls-san=' + ip, '--token=' + this.settings.token,
+					'--kube-apiserver-arg=service-node-port-range=1-65000', '--kube-apiserver-arg=advertise-address=' + ip,
+					'--kube-apiserver-arg=external-hostname=' + ip])
+				k3s_args.push('--private-registry=/var/lib/rancher/k3s/registries.yaml')
+				this.logger.warn(`server new url is ${this.settings.server_url}`)
+			} else {
+				k3s_args.push('agent')
+				k3s_args.push('--private-registry=/var/lib/rancher/k3s/registries.yaml')
+			}
+
+
+
 			const json = {
 				ssh_authorized_keys: [
 					...keys
+				],
+				hostname: `k3os-${Moniker.choose()}`,
+				write_files: [
+					{
+						"content": "mirrors:\n  10.60.50.2:5000:\n    endpoint:\n      - \"http://10.60.50.2:5000\"",
+						"encoding": "",
+						"owner": "",
+						"path": "/var/lib/rancher/k3s/registries.yaml",
+						"permissions": ""
+					}
 				],
 				init_cmd: [],
 				boot_cmd: [],
@@ -91,17 +183,20 @@ module.exports = {
 					},
 					taints: [...(this.settings.taints || [])],
 
-					k3s_args: [
-						'agent'
-					]
+					k3s_args: k3s_args
 				}
+			}
+
+			if (isMaster) {
+				delete json.k3os.server_url
 			}
 
 			const yaml = YAML.stringify(json)
 
 			res.end(yaml);
 
-			this.bootSet.add(ip, json)
+			this.bootSet.set(ip, json)
+			console.log(json)
 		},
 
 
@@ -170,7 +265,7 @@ module.exports = {
 	 * Service created lifecycle event handler
 	 */
 	created() {
-		this.bootSet = new Set();
+		this.bootSet = new Map();
 	},
 
 	/**

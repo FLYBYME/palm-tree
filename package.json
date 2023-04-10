@@ -28,6 +28,7 @@
     "finalhandler": "^1.2.0",
     "json2yaml": "^1.1.0",
     "moleculer": "^0.14.26",
+    "moniker": "^0.1.2",
     "nats": "^2.10.2",
     "serve-static": "^1.15.0",
     "tftp": "^0.1.2"
