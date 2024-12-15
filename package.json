@@ -25,12 +25,17 @@
     "moleculer-repl": "^0.7.3"
   },
   "dependencies": {
+    "dhcp2": "github:lsongdev/node-dhcp",
+    "dhcpjs": "^1.0.0",
     "finalhandler": "^1.2.0",
+    "ip": "^2.0.1",
     "json2yaml": "^1.1.0",
     "moleculer": "^0.14.26",
     "moniker": "^0.1.2",
     "nats": "^2.10.2",
+    "node-wol": "^0.1.1",
     "serve-static": "^1.15.0",
+    "ssh2": "^1.16.0",
     "tftp": "^0.1.2"
   },
   "engines": {

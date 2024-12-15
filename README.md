@@ -65,7 +65,7 @@ rm -rf ipxe
 
 k3os netboot files
 ```
-SOURCE_HTTP=https://github.com/rancher/k3os/releases/latest/download
+SOURCE_HTTP=https://github.com/rancher/k3os/releases/download/v0.21.5-k3s2r1
 
 mkdir public/k3os
 cd public/k3os
