@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="app">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+
+<body>
+    <div class="sidebar">
+        <h4 class="text-center">Dashboard</h4>
+        <hr>
+        <a ui-sref="HomeController()">Home</a>
+        <a ui-sref="NodesController()">Nodes</a>
+    </div>
+
+    <div class="main-content" ui-view="main" role="main">
+    </div>
+</body>
+
+</html>

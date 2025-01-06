@@ -1,5 +1,6 @@
 const DbService = require("@moleculer/database").Service;
 const { MoleculerClientError } = require("moleculer").Errors;
+const Context = require("moleculer").Context;
 
 /**
  * Netboot Kernel Service
@@ -7,12 +8,13 @@ const { MoleculerClientError } = require("moleculer").Errors;
 
 module.exports = {
     name: "kernels",
+    version: 1,
 
     mixins: [
         DbService({
             adapter: {
                 type: "NeDB",
-                options: "./kernels.db"
+                options: "./db/kernels.db"
             }
         })
     ],
@@ -38,9 +40,25 @@ module.exports = {
             iso: { type: "string", required: false },
             repo: { type: "string", required: false },
             archive: { type: "string", required: false },
+            apkovl: { type: "string", required: false },// 
 
             cmdline: { type: "string", required: false },
-            
+
+            k3os: {
+                silent: { type: "boolean", required: false, default: false },
+                poweroff: { type: "boolean", required: false, default: false },
+                mode: {
+                    type: "string",
+                    enum: [
+                        "install",
+                        "multi",
+                    ],
+                    required: false,
+                    default: "install"
+                },
+                iso_url: { type: "string", required: false, default: null },
+            },
+
             id: { type: "string", primaryKey: true, columnName: "_id" /*, generated: "user"*/ },
             createdAt: {
                 type: "number",
@@ -66,17 +84,184 @@ module.exports = {
         // Configure the scope as default scope
         defaultScopes: ["notDeleted"],
 
-
+        kernelTypes: {
+            alpine: {
+                name: "alpine",
+                version: "3.14.0",
+                arch: "x86_64",
+                cmdline: "console=tty0 modules=loop,squashfs quiet nomodeset",
+                vmlinuz: "alpine/netboot/3.14.0/vmlinuz-lts",
+                initramfs: "alpine/netboot/3.14.0/initramfs-lts",
+                modloop: "alpine/netboot/3.14.0/modloop-lts",
+                repo: "alpine/v3.14/main/",
+                archive: "http://dl-cdn.alpinelinux.org",
+                apkovl: "alpine/netboot/3.14.0/apkovl-lts.apkovl.tar.gz"
+            },
+            k3os: {
+                name: "k3os",
+                version: "v0.21.5-k3s2r1",
+                arch: "x86_64",
+                cmdline: "printk.devkmsg=on console=ttyS0 console=tty1 initrd=initrd.magic",
+                vmlinuz: "k3os/v0.21.5-k3s2r1/k3os-vmlinuz-amd64",
+                initramfs: "k3os/v0.21.5-k3s2r1/k3os-initramfs-amd64",
+                k3os: {
+                    silent: true,
+                    poweroff: true,
+                    mode: "install",
+                    config_url: "k3os/config",
+                    iso_url: "k3os/v0.21.5-k3s2r1/k3os-amd64.iso"
+                }
+            }
+        }
     },
 
     actions: {
+        lookup: {
+            rest: {
+                method: "GET",
+                path: "/lookup/:name"
+            },
+            params: {
+                name: { type: "string", optional: false }
+            },
+            async handler(ctx) {
+                return this.findEntity(ctx, {
+                    query: {
+                        name: ctx.params.name
+                    }
+                });
+            }
+        },
+        generateBootFile: {
+            rest: {
+                method: "GET",
+                path: "/generateBootFile/:node/:kernel"
+            },
+            params: {
+                node: { type: "string", optional: false },
+                kernel: { type: "string", optional: false }
+            },
+            async handler(ctx) {
 
+                const node = await ctx.call('v1.nodes.resolve', { id: ctx.params.node });
+                if (!node) {
+                    throw new MoleculerClientError(
+                        `Node with id ${ctx.params.node} not found`,
+                        404,
+                        "NODE_NOT_FOUND",
+                        { id: ctx.params.node }
+                    );
+                }
+
+                const kernel = await this.getKernelById(ctx, ctx.params.kernel);
+                if (!kernel) {
+                    throw new MoleculerClientError(
+                        `Kernel with id ${ctx.params.kernel} not found`,
+                        404,
+                        "KERNEL_NOT_FOUND",
+                        { id: ctx.params.kernel }
+                    );
+                }
+
+
+                const bootFile = await this.generateBootFile(ctx, node, kernel);
+                return bootFile;
+            }
+        }
     },
 
     events: {},
 
     methods: {
+        async generateBootFile(ctx, node, kernel) {
+            const bootFile = [];
 
+            bootFile.push(`#!ipxe`);
+
+            bootFile.push('echo next-server is ${next-server}');
+            bootFile.push('echo filaneme is ${filename}');
+            bootFile.push('echo MAC address is ${net0/mac}');
+            bootFile.push('echo IP address is ${ip}');
+
+            bootFile.push('set vmlinuz http://${next-server}/' + kernel.vmlinuz);
+            bootFile.push('echo vmlinuz is ${vmlinuz}');
+            bootFile.push('set initramfs http://${next-server}/' + kernel.initramfs);
+            bootFile.push('echo initramfs is ${initramfs}');
+
+            const kernelCMD = [
+                '${vmlinuz}',
+            ];
+
+            if (kernel.cmdline) {
+                bootFile.push(`set cmdline ${kernel.cmdline}`);
+                bootFile.push('echo cmdline is ${cmdline}');
+                kernelCMD.push(kernel.cmdline);
+            }
+
+            if (kernel.modloop) {
+                bootFile.push('set modloop http://${next-server}/' + kernel.modloop);
+                bootFile.push('echo modloop is ${modloop}');
+                kernelCMD.push('modloop=${modloop}');
+            }
+
+            if (kernel.name == 'alpine') {
+                bootFile.push('set repo http://${next-server}/' + kernel.repo);
+                bootFile.push('echo repo is ${repo}');
+                kernelCMD.push('alpine_repo=${repo}');
+                if (kernel.apkovl) {
+                    bootFile.push('set apkovl http://${next-server}/' + kernel.apkovl);
+                    bootFile.push('echo apkovl is ${apkovl}');
+                    kernelCMD.push('apkovl=${apkovl}');
+                }
+                
+                bootFile.push('set ssh_keys http://${next-server}/ssh_keys');
+                bootFile.push('echo ssh_keys is ${ssh_keys}');
+                kernelCMD.push('ssh_keys=${ssh_keys}');
+            } else if (kernel.name == 'k3os') {
+                const k3os = kernel.k3os;
+                const installParams = [];
+
+                installParams.push(`k3os.install.silent=${k3os.silent}`);
+                installParams.push(`k3os.install.poweroff=${k3os.poweroff}`);
+                installParams.push(`k3os.install.mode=${k3os.mode}`);
+                installParams.push('k3os.install.config_url=http://${next-server}/' + k3os.config_url);
+                //installParams.push(`k3os.install.device=${node.device}`);
+                installParams.push('k3os.install.iso_url=http://${next-server}/' + k3os.iso_url);
+
+                kernelCMD.push(installParams.join(' '));
+            }
+
+            bootFile.push(`kernel ${kernelCMD.join(' ')}`);
+            bootFile.push('initrd ${initramfs}');
+
+            bootFile.push('boot');
+
+            return bootFile.join('\n');
+        },
+
+        async loadKernels() {
+            const ctx = new Context(this.broker);
+            const foundKernels = await this.findEntity(ctx, {
+                query: {
+                }
+            });
+
+            if (!foundKernels) {
+                const names = Object.keys(this.settings.kernelTypes);
+                for (const name of names) {
+                    const kernel = this.settings.kernelTypes[name];
+                    await this.createEntity(ctx, kernel);
+                }
+
+                this.logger.info(`Created ${names.length} kernels`);
+            }
+
+        },
+
+        async getKernelById(ctx, id) {
+            const found = await this.resolveEntities(ctx, { id });
+            return found;
+        }
     },
 
     created() {
@@ -84,7 +269,7 @@ module.exports = {
     },
 
     async started() {
-
+        await this.loadKernels();
     },
 
     async stopped() {

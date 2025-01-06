@@ -1,119 +1,159 @@
-[![Moleculer](https://badgen.net/badge/Powered%20by/Moleculer/0e83cd)](https://moleculer.services)
+# Advanced PXE Boot Server Services
 
-# Palm-Tree
-> This is a [Moleculer](https://moleculer.services/)-based microservices project. Generated with the [Moleculer CLI](https://moleculer.services/docs/0.14/moleculer-cli.html).
+This documentation describes the services that together provide the functionality for an advanced PXE (Preboot Execution Environment) boot server. These services enable efficient management of DHCP leases, kernel configurations, HTTP requests, and TFTP operations.
 
-Preboot Execution Environment (PXE) Boot Server
+---
 
-Moleculer service to help facilitate k3os/netbooting 
+## **DHCP Service**
 
-## Usage
+### **Overview**
+The `dhcp` service handles DHCP server functionalities, including IP lease allocation and responding to DHCP requests for PXE booting.
 
-### ipxe compile
+### **Settings**
+- **Fields**: Defines the schema for DHCP entries (IP, MAC address, lease times, server configurations, etc.).
+- **Scopes**: Includes a `notDeleted` scope for soft-deleted entries.
+- **DHCP Configuration**:
+  - `port`: The DHCP server port (default: 67).
+  - `serverAddress`: The server's IP address.
+  - `gateways`, `dns`: Lists of gateways and DNS servers.
+  - `range`: IP address allocation range.
+  - `nextServer`, `tftpServer`: Addresses for next-hop servers.
+  - `bootFile`: PXE boot file path.
+  - `leaseTime`: Lease duration in seconds.
 
-install deps
-```
-sudo apt install -y make gcc binutils perl mtools mkisofs syslinux liblzma-dev isolinux
-```
-download and enable ping and nfs
-```
-git clone git://git.ipxe.org/ipxe.git
-cd ipxe/src
+### **Key Actions**
+- *None currently defined in the code snippet.*
 
-sed -i 's/#undef\tDOWNLOAD_PROTO_NFS/#define\tDOWNLOAD_PROTO_NFS/' config/general.h
-sed -i 's/\/\/#define\ PING_CMD/#define\ PING_CMD/' config/general.h
-sed -i 's/\/\/#define\ IPSTAT_CMD/#define\ IPSTAT_CMD/' config/general.h
-sed -i 's/\/\/#define\ REBOOT_CMD/#define\ REBOOT_CMD/' config/general.h
-sed -i 's/\/\/#define\ POWEROFF/#define\ POWEROFF/' config/general.h
+### **Methods**
+- **createServer()**: Initializes and starts the DHCP server.
+- **attachEvents(server)**: Attaches event handlers for DHCP server events (e.g., discover, request).
+- **createNewLease(ctx, mac)**: Allocates a new IP lease for a given MAC address.
+- **handleDiscover(ctx, event)**: Handles DHCP discovery requests.
+- **handleRequest(ctx, event)**: Handles DHCP request acknowledgments.
 
-nano embed.ipxe
-```
-chainboot next server
-```nano embed.ipxe```
+### **Lifecycle Hooks**
+- **created()**: Initializes locks and server variables.
+- **started()**: Starts the DHCP server.
+- **stopped()**: Stops the DHCP server.
 
-```
-#!ipxe
-dhcp && goto netboot || goto dhcperror
+---
 
-:dhcperror
-prompt --key s --timeout 10000 DHCP failed, hit 's' for the iPXE shell; reboot in 10 seconds && shell || reboot
+## **Kernels Service**
 
-:netboot
-chain tftp://${next-server}/main.ipxe ||
-prompt --key s --timeout 10000 Chainloading failed, hit 's' for the iPXE shell; reboot in 10 seconds && shell || reboot
-```
+### **Overview**
+The `kernels` service manages bootable kernels for PXE. It provides functionality to define, store, and retrieve kernel configurations.
 
-Now compile for 64x and 32 bit
-```
-make bin-x86_64-efi/ipxe.efi EMBED=embed.ipxe
-make bin/undionly.kpxe EMBED=embed.ipxe
-```
+### **Settings**
+- **Fields**: Defines the schema for kernel configurations, including:
+  - Name, version, architecture.
+  - Paths for `vmlinuz`, `initramfs`, and optional files like `modloop`, `iso`, etc.
+  - `cmdline`: Kernel command-line arguments.
+  - `k3os`: Additional configuration for K3OS kernels.
+- **Kernel Types**: Predefined kernel templates (e.g., Alpine, K3OS).
 
-Now copy over
-```
-cp bin-x86_64-efi/ipxe.efi ../../public/ipxe.efi
-cp bin/undionly.kpxe ../../public/undionly.kpxe
-```
-Now clean up
-```
-cd ../../
-rm -rf ipxe
-```
+### **Key Actions**
+- **lookup**:
+  - **REST**: `GET /lookup/:name`
+  - **Params**: `name` (required)
+  - **Description**: Finds a kernel configuration by name.
+- **generateBootFile**:
+  - **REST**: `GET /generateBootFile/:node/:kernel`
+  - **Params**: `node` and `kernel` (both required)
+  - **Description**: Generates an iPXE boot file for a given node and kernel.
 
+### **Methods**
+- **generateBootFile(ctx, node, kernel)**: Creates an iPXE boot file for specified kernel and node.
+- **loadKernels()**: Loads predefined kernels into the database.
+- **getKernelById(ctx, id)**: Retrieves a kernel configuration by its ID.
 
-### k3os files
+### **Lifecycle Hooks**
+- **created()**: Sets up the service.
+- **started()**: Loads kernel configurations on service start.
+- **stopped()**: Cleans up resources on service stop.
 
-k3os netboot files
-```
-SOURCE_HTTP=https://github.com/rancher/k3os/releases/download/v0.21.5-k3s2r1
+---
 
-mkdir public/k3os
-cd public/k3os
-wget $SOURCE_HTTP/k3os-amd64.iso
-wget $SOURCE_HTTP/k3os-initrd-amd64
-wget $SOURCE_HTTP/k3os-vmlinuz-amd64
-```
+## **HTTP Server Service**
 
-### main.ipxe
+### **Overview**
+The `http` service provides HTTP server capabilities, allowing interaction with PXE-related files and configurations.
 
-```
-#!ipxe
+### **Key Features**
+- Serves static files from a specified public directory.
+- Handles PXE-related requests, such as serving kernel files, K3OS configurations, and SSH keys.
+- Supports dynamic file caching and efficient file downloads.
+- Allows for APK overlay uploads for specific kernels.
 
-set os_arch amd64
-set k3os_mirror http://10.60.50.1:8088
-set k3os_version v0.21.5-k3s2r1
-set k3os_install_device /dev/sda
+### **Settings**
+- **HTTP Configuration**:
+  - `http.port` (default: `80`): Port for the HTTP server.
+  - `http.address` (default: `0.0.0.0`): IP address for the server.
+  - `http.root` (default: `./public`): Root directory for serving static files.
+- **SSL Configuration**:
+  - `ssl.key` (default: `null`): Path to the SSL key file.
+  - `ssl.cert` (default: `null`): Path to the SSL certificate file.
 
-set k3os_base_url ${k3os_mirror}/k3os
+### **Key Methods**
+- **createHTTPServer()**: Creates and starts the HTTP server, attaching request handlers and logging server events.
+- **closeServer()**: Closes the HTTP server gracefully.
+- **onHTTPRequest(req, res)**: Routes HTTP requests based on the URL.
+- **handleK3OSConfig(ctx, req, res)**: Generates a K3OS YAML configuration file for the requesting node.
+- **handleSSHKeys(ctx, req, res)**: Serves authorized SSH keys for a node identified by its IP address.
+- **handleApkOvlUpload(ctx, req, res)**: Handles APK overlay file uploads.
+- **handleMirror(ctx, req, res)**: Serves or caches files for kernel configurations.
 
-set k3os_config_url ${k3os_base_url}/config
+### **Lifecycle Hooks**
+- **created()**: Initializes the HTTP server and file cache.
+- **started()**: Starts the HTTP server by calling `createHTTPServer`.
+- **stopped()**: Stops the HTTP server by calling `closeServer`.
 
-set install_params k3os.install.silent=true k3os.mode=install k3os.install.config_url=${k3os_config_url} k3os.install.device=${k3os_install_device}
-set boot_params printk.devkmsg=on k3os.install.iso_url=${k3os_base_url}/k3os-${os_arch}.iso console=ttyS0 console=tty1
-imgfree
-kernel ${k3os_base_url}/k3os-vmlinuz-${os_arch} ${install_params} ${boot_params} {{ kernel_params }}
-initrd ${k3os_base_url}/k3os-initrd-${os_arch}
-boot
-```
+---
 
+## **TFTP Server Service**
 
-## Services
-- **api**: API Gateway services
-- **greeter**: Sample service with `hello` and `welcome` actions.
+### **Overview**
+The `tftp` service provides TFTP server capabilities to support PXE boot processes. It serves critical files such as iPXE binaries and boot configuration files.
 
+### **Settings**
+- **TFTP Configuration**:
+  - `tftp.port` (default: `69`): Port for the TFTP server.
+  - `tftp.address` (default: `0.0.0.0`): Host address for the server.
+  - `tftp.root` (default: `./public`): Root directory for TFTP files.
+  - `tftp.ipxe` (default: `ipxe.efi`): Default iPXE binary file.
+  - `tftp.main` (default: `main.ipxe`): Main boot configuration file.
 
-## Useful links
+### **Key Methods**
+- **createTFTPServer()**: Creates the TFTP server instance and attaches request handlers for incoming requests.
+- **startTFTPServer()**: Starts the TFTP server, listening on the configured port and address.
+- **stopTFTPServer()**: Stops the TFTP server gracefully.
+- **onTFTPRequest(req, res)**: Handles incoming TFTP requests.
+- **handleIpxeRequest(ctx, req, res, ip)**: Processes requests for the iPXE binary.
+- **handleMainRequest(ctx, req, res, ip)**: Processes requests for the main boot configuration.
+- **serveFile(req, res, file, contents)**: Serves a file or dynamically provided content.
 
-* Moleculer website: https://moleculer.services/
-* Moleculer Documentation: https://moleculer.services/docs/0.14/
+### **Lifecycle Hooks**
+- **created()**: Initializes the TFTP server instance.
+- **started()**: Starts the TFTP server when the service is launched.
+- **stopped()**: Stops the TFTP server when the service is stopped.
 
-## NPM scripts
+---
 
-- `npm run dev`: Start development mode (load all services locally with hot-reload & REPL)
-- `npm run start`: Start production mode (set `SERVICES` env variable to load certain services)
-- `npm run cli`: Start a CLI and connect to production. Don't forget to set production namespace with `--ns` argument in script
-- `npm run lint`: Run ESLint
-- `npm run ci`: Run continuous test mode with watching
-- `npm test`: Run tests & generate coverage report
-- `npm run dc:up`: Start the stack with Docker Compose
-- `npm run dc:down`: Stop the stack with Docker Compose
+## **Integration**
+- The `dhcp` service interacts with the `kernels` service for providing necessary files during PXE boot.
+- The `http` and `tftp` services serve files required for kernel and PXE operations.
+- Nodes are dynamically registered and resolved during DHCP requests.
+- iPXE boot files are generated dynamically with kernel configurations.
+
+---
+
+## **Dependencies**
+- `tftp`: Module for creating and managing the TFTP server.
+- `fs`: File system module for handling file streams.
+- `path`: Provides utilities for working with file paths.
+
+---
+
+## **Logging and Error Handling**
+- Logs key events such as file transfers and errors.
+- Provides detailed warnings for invalid or failed requests.
+

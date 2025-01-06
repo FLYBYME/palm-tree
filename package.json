@@ -25,6 +25,7 @@
     "moleculer-repl": "^0.7.3"
   },
   "dependencies": {
+    "@network-utils/dhcp": "^1.0.10",
     "dhcp2": "github:lsongdev/node-dhcp",
     "dhcpjs": "^1.0.0",
     "finalhandler": "^1.2.0",

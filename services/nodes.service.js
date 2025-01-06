@@ -4,16 +4,18 @@ const { Client } = require('ssh2');
 const fs = require('fs').promises;
 const Moniker = require('moniker');
 const wol = require('wake_on_lan');
+const crypto = require('crypto');
 
 
 module.exports = {
     name: "nodes",
+    version:1,
 
     mixins: [
         DbService({
             adapter: {
                 type: "NeDB",
-                options: "./nodes.db"
+                options: "./db/nodes.db"
             }
         })
     ],
@@ -28,82 +30,31 @@ module.exports = {
                     return Moniker.choose();
                 }
             },
-            ip: { type: "string" },
-            mac: { type: "string" },
-            stage: {
+
+            ip: {
                 type: "string",
-                enum: [// pxei boot process information gathering, sleeping, firstContact...
-                    "firstContact",
-                    "sleeping",
-                    "contact",
-                    "IPAssigned",
-                ],
-                default: "firstContact"
+                required: true
             },
-            // storage data
-            storage: {
-                type: "array",
-                items: {
-                    type: "object",
-                    fields: {
-                        size: { type: "number" },
-                        used: { type: "number" },
-                        free: { type: "number" },
-                        device: { type: "string" },
-                        mount: { type: "string" }
-                    }
-                },
+
+            lease: {
+                type: "string",
                 required: false,
-                default: []
+                populate: {
+                    action: "v1.dhcp.resolve"
+                }
             },
 
-
-            // network data
-            network: {
-                type: "array",
-                items: {
-                    type: "object",
-                    fields: {
-                        name: { type: "string" }, // Interface name (e.g., eth0, wlan0)
-                        ip: { type: "string", optional: true }, // IPv4 address
-                        mac: { type: "string", optional: true }, // MAC address
-                        mask: { type: "string", optional: true }, // Subnet mask
-                        gateway: { type: "string", optional: true }, // Gateway
-                        dns: { type: "array", items: { type: "string" }, optional: true } // DNS servers
-                    }
-                },
-                required: false,
-                default: []
+            kernel: {
+                type: "string",
+                required: true,
+                populate: {
+                    action: "v1.kernels.resolve"
+                }
             },
 
-
-            // cpu data
-            cpu: {
-                type: "object",
-                fields: {
-                    model: { type: "string" },
-                    cores: { type: "number" },
-                    threads: { type: "number" },
-                    clockMin: { type: "number" },
-                    clockMax: { type: "number" },
-                    cache: { type: "number" } // in KB
-                },
-                required: false,
-                default: {}
-            },
-
-
-            // memory data
-            memory: {
-                type: "object",
-                fields: {
-                    total: { type: "number" },
-                    free: { type: "number" },
-                    used: { type: "number" }
-                },
-                required: false,
-                default: {}
-            },
+            password: { type: "string" },
+            authorizedKeys: { type: "string" },
+            controlNode: { type: "boolean", required: false, default: false },
 
 
             id: { type: "string", primaryKey: true, columnName: "_id" /*, generated: "user"*/ },
@@ -132,24 +83,52 @@ module.exports = {
         defaultScopes: ["notDeleted"],
 
 
-        id_ecdsa: "/root/.ssh/id_ecdsa",
+        authorizedKeys: "/root/.ssh/authorized_keys",
     },
 
     actions: {
+
+        lookup: {
+            rest: {
+                method: "GET",
+                path: "/lookup/:ip",
+            },
+            params: {
+                ip: { type: "string", optional: false }
+            },
+            async handler(ctx) {
+                return this.getNodeByIp(ctx, ctx.params.ip);
+            }
+        },
+
         register: {
             rest: {
                 method: "POST",
                 path: "/register",
             },
             params: {
-                ip: { type: "string", optional: false }
+                ip: { type: "string", optional: false },
+                kernel: {
+                    type: "string",
+                    optional: true,
+                    enum: [
+                        "k3os",
+                        "alpine"
+                    ],
+                    default: "alpine"
+                }
             },
             async handler(ctx) {
-                const { ip } = ctx.params;
+                const { ip, kernel: kernelName } = ctx.params;
+
+                const kernel = await ctx.call('v1.kernels.lookup', { name: kernelName });
+                const authorizedKeys = await this.getAuthorizedKeys(ctx);
 
                 const entity = {
                     ip,
-                    stage: "firstContact"
+                    password: crypto.randomBytes(16).toString('hex'),
+                    kernel: kernel.id,
+                    authorizedKeys
                 };
 
                 const found = await this.findEntity(ctx, {
@@ -172,496 +151,131 @@ module.exports = {
         },
 
 
-        setMac: {
+        setMLease: {
             rest: {
                 method: "POST",
-                path: "/set-mac",
+                path: "/:id/set-lease",
             },
             params: {
-                ip: { type: "string", optional: false },
-                mac: { type: "string", optional: false }
+                id: { type: "string", optional: false },
+                lease: { type: "string", optional: false }
             },
             async handler(ctx) {
-                const { ip, mac } = ctx.params;
+                const { id, lease } = ctx.params;
 
-                const node = await this.getNodeByIp(ip);
+                const node = await this.getNodeById(ctx, id);
                 if (!node) {
                     throw new MoleculerClientError(
-                        `Node with ip ${ip} not found`,
+                        `Node with id ${id} not found`,
                         404,
                         "NODE_NOT_FOUND",
-                        { ip }
+                        { id }
                     );
                 }
 
                 const updatedNode = await this.updateEntity(ctx, {
                     id: node.id,
-                    mac
+                    lease
                 });
 
-                this.logger.info(`Node ${ip} mac updated to ${mac} from ${node.mac}`);
+                this.logger.info(`Node ${id} lease updated to ${lease} from ${node.lease}`);
 
                 return updatedNode;
             }
         },
 
-        setStage: {
-            rest: {
-                method: "POST",
-                path: "/set-stage",
-            },
-            params: {
-                ip: { type: "string", optional: false },
-                stage: { type: "string", optional: false }
-            },
-            async handler(ctx) {
-                const { ip, stage } = ctx.params;
-
-                const node = await this.getNodeByIp(ip);
-                if (!node) {
-                    throw new MoleculerClientError(
-                        `Node with ip ${ip} not found`,
-                        404,
-                        "NODE_NOT_FOUND",
-                        { ip }
-                    );
-                }
-
-                const updatedNode = await this.updateEntity(ctx, {
-                    id: node.id,
-                    stage
-                });
-
-                this.logger.info(`Node ${ip} stage updated to ${stage} from ${node.stage}`);
-
-                return updatedNode;
-            }
-        },
-
-
-        updateStorage: {
-            rest: {
-                method: "POST",
-                path: "/update-storage",
-            },
-            params: {
-                ip: { type: "string", optional: false }
-            },
-            async handler(ctx) {
-                const { ip } = ctx.params;
-
-                const node = await this.getNodeByIp(ip);
-                if (!node) {
-                    throw new MoleculerClientError(
-                        `Node with ip ${ip} not found`,
-                        404,
-                        "NODE_NOT_FOUND",
-                        { ip }
-                    );
-                }
-
-                // Fetch storage info from the node
-                const storageDevices = await this.fetchStorageDevices(node);
-
-                if (!storageDevices || !storageDevices.length) {
-                    throw new MoleculerClientError(
-                        `Failed to fetch storage devices for node with IP ${ip}`,
-                        500,
-                        "FETCH_STORAGE_FAILED",
-                        { ip }
-                    );
-                }
-
-                // Update node's storage data in the database
-                const updatedNode = await this.updateEntity(ctx, {
-                    id: node.id,
-                    storage: storageDevices
-                });
-
-                this.logger.info(`Node ${ip} storage updated`);
-
-                return updatedNode;
-            }
-        },
-        updateCpu: {
-            rest: {
-                method: "POST",
-                path: "/update-cpu",
-            },
-            params: {
-                ip: { type: "string", optional: false }
-            },
-            async handler(ctx) {
-                const { ip } = ctx.params;
-
-                const node = await this.getNodeByIp(ip);
-                if (!node) {
-                    throw new MoleculerClientError(
-                        `Node with ip ${ip} not found`,
-                        404,
-                        "NODE_NOT_FOUND",
-                        { ip }
-                    );
-                }
-
-                // Fetch CPU info from the node
-                const cpuInfo = await this.fetchCpuInfo(node.ip);
-
-                if (!cpuInfo) {
-                    throw new MoleculerClientError(
-                        `Failed to fetch CPU info for node with IP ${ip}`,
-                        500,
-                        "FETCH_CPU_FAILED",
-                        { ip }
-                    );
-                }
-
-                // Update node's CPU data in the database
-                const updatedNode = await this.updateEntity(ctx, {
-                    id: node.id,
-                    cpu: cpuInfo
-                });
-
-                this.logger.info(`Node ${ip} CPU updated`);
-
-                return updatedNode;
-            }
-        },
-        updateNetwork: {
-            rest: {
-                method: "POST",
-                path: "/update-network",
-            },
-            params: {
-                ip: { type: "string", optional: false }
-            },
-            async handler(ctx) {
-                const { ip } = ctx.params;
-
-                const node = await this.getNodeByIp(ip);
-                if (!node) {
-                    throw new MoleculerClientError(
-                        `Node with ip ${ip} not found`,
-                        404,
-                        "NODE_NOT_FOUND",
-                        { ip }
-                    );
-                }
-
-                // Fetch network interfaces from the node
-                const interfaces = await this.fetchNetworkInterfaces(ip);
-
-                if (!interfaces || !interfaces.length) {
-                    throw new MoleculerClientError(
-                        `Failed to fetch network interfaces for node with IP ${ip}`,
-                        500,
-                        "FETCH_NETWORK_FAILED",
-                        { ip }
-                    );
-                }
-
-                // Update node's network data in the database
-                const updatedNode = await this.updateEntity(ctx, {
-                    id: node.id,
-                    network: interfaces
-                });
-
-                this.logger.info(`Node ${ip} network updated`);
-
-                return updatedNode;
-            }
-        },
-
-        reboot: {
-            rest: {
-                method: "POST",
-                path: "/reboot",
-            },
-            params: {
-                ip: { type: "string", optional: false }
-            },
-            async handler(ctx) {
-                const { ip } = ctx.params;
-
-                const node = await this.getNodeByIp(ip);
-                if (!node) {
-                    throw new MoleculerClientError(
-                        `Node with ip ${ip} not found`,
-                        404,
-                        "NODE_NOT_FOUND",
-                        { ip }
-                    );
-                }
-
-                this.logger.info(`Node ${ip} rebooted`);
-                return this.rebootNode(node);
-            }
-        },
-
-        wol: {
-            rest: {
-                method: "POST",
-                path: "/wol",
-            },
-            params: {
-                mac: { type: "string", optional: false }
-            },
-            async handler(ctx) {
-                const { mac } = ctx.params;
-                return this.sendMagicPacket(mac);
-            }
-        },
-
-
-        exec: {
-            rest: {
-                method: "POST",
-                path: "/exec",
-            },
-            params: {
-                ip: { type: "string", optional: false },
-                command: { type: "string", optional: false }
-            },
-            async handler(ctx) {
-                const { ip, command } = ctx.params;
-                return this.execCommand(ip, command);
-            }
-        },
-
-        listConnections: {
+        getAuthorizedKeys: {
             rest: {
                 method: "GET",
-                path: "/connections",
+                path: "/authorized-keys",
+            },
+            params: {
+                id: { type: "string", optional: false }
             },
             async handler(ctx) {
-                return this.getConnections();
+                const { id } = ctx.params;
+
+                const node = await this.getNodeById(ctx, id);
+                if (!node) {
+                    throw new MoleculerClientError(
+                        `Node with id ${id} not found`,
+                        404,
+                        "NODE_NOT_FOUND",
+                        { id }
+                    );
+                }
+
+                return node.authorizedKeys;
             }
-        }
+        },
+
+
+        setAuthorizedKeys: {
+            rest: {
+                method: "POST",
+                path: "/authorized-keys",
+            },
+            params: {
+                id: { type: "string", optional: false },
+                authorizedKeys: { type: "string", optional: false }
+            },
+            async handler(ctx) {
+                const { id, authorizedKeys } = ctx.params;
+
+                const node = await this.getNodeById(ctx, id);
+                if (!node) {
+                    throw new MoleculerClientError(
+                        `Node with id ${id} not found`,
+                        404,
+                        "NODE_NOT_FOUND",
+                        { id }
+                    );
+                }
+
+                const updatedNode = await this.updateEntity(ctx, {
+                    id: node.id,
+                    authorizedKeys
+                });
+
+                this.logger.info(`Node ${id} authorized keys updated to ${authorizedKeys} from ${node.authorizedKeys}`);
+
+                return updatedNode;
+            }
+        },
+
     },
 
     events: {},
 
     methods: {
-        async sendMagicPacket(mac) {
-            return new Promise((resolve, reject) => {
-                wol.wake(mac, (err) => {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve();
-                    }
-                });
-            });
+        async getNodeById(ctx, id) {
+            return this.resolveEntities(ctx, { id });
         },
-
-        readSSHKey() {
-            return fs.readFile(this.settings.id_ecdsa, 'utf-8');
-        },
-
-        async closeAllConnections() {
-            for (const [ip, connection] of this.connections) {
-                await connection.end();
-            }
-
-            this.connections.clear();
-        },
-
-        async closeConnection(ip) {
-            if (this.connections.has(ip)) {
-                await this.connections.get(ip).end();
-                this.connections.delete(ip);
-            }
-        },
-
-        async openConnection(ip) {
-            if (this.connections.has(ip)) {
-                return this.connections.get(ip);
-            }
-
-            const connection = new Client();
-
-            await connection.connect({
-                host: ip,
-                port: 22,
-                username: "root",
-                privateKey: this.sshKey
-            });
-
-            this.connections.set(ip, connection);
-
-            this.logger.info(`Connecting to ${ip}`);
-
-            return new Promise((resolve, reject) => {
-                connection.on("ready", () => {
-                    resolve(connection);
-                    this.logger.info(`Connected to ${ip}`);
-                });
-                connection.on("error", (error) => {
-                    reject(error);
-                    this.logger.error(`Failed to connect to ${ip}: ${error.message}`);
-                });
-            });
-        },
-
-        listConnections() {
-            return Array.from(this.connections.keys());
-        },
-
-        getConnection(ip) {
-            return this.connections.get(ip);
-        },
-
-        async execCommand(ip, command) {
-            const connection = await this.openConnection(ip);
-
-            return new Promise((resolve, reject) => {
-                connection.exec(command, (error, stream) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        let output = "";
-                        stream.on("data", (data) => {
-                            console.log(ip, data.toString());
-                            output += data;
-                        });
-                        stream.stderr.on("data", (data) => {
-                            console.log(ip, data.toString());
-                            output += data;
-                        })
-                        stream.on("error", (error) => {
-                            reject(error);
-                        });
-                        stream.on("end", () => {
-                            resolve(output);
-                        });
-                    }
-                });
-            });
-        },
-
-        async getNodeByIp(ip) {
-            const found = await this.findEntity({
+        async getNodeByIp(ctx, ip) {
+            return this.findEntity(ctx, {
                 query: {
                     ip
                 }
             });
-
-            return found;
         },
-
-        async fetchStorageDevices(node) {
-            const command = "df -h --output=size,used,avail,source,target";
-            const output = await this.execCommand(node.ip, command);
-
-            // Log the raw output for debugging
-            console.log("Command output:", output);
-
-            const devices = output
-                .trim()
-                .split("\n")
-                .filter(
-                    line => line.trim() !== "" &&
-                        !line.startsWith("Size") && // Exclude header line
-                        !line.includes("tmpfs") && // Exclude temporary filesystem
-                        !line.includes("/dev/zram")
-                )
-                .map(line => {
-                    this.logger.info(`Parsed line: ${line}`);
-                    const [size, used, free, device, mount] = line.trim().split(/\s+/);
-
-                    // Log each parsed item for debugging
-                    this.logger.info({
-                        size, used, free, device, mount
-                    });
-
-                    return {
-                        size: parseFloat(size.replace(/[^0-9.]/g, "")), // Remove units
-                        used: parseFloat(used.replace(/[^0-9.]/g, "")),
-                        free: parseFloat(free.replace(/[^0-9.]/g, "")),
-                        device,
-                        mount
-                    };
-                });
-
-            if (!devices.length) {
-                throw new Error("No storage devices found");
+        async getAuthorizedKeys(ctx) {
+            const stats = await fs.stat(this.settings.authorizedKeys).catch(() => false);
+            if (!stats) {
+                return '';
             }
 
-            return devices;
-        },
-        async fetchCpuInfo(node) {
-            const command = `
-                lscpu | grep -E 'Model name|CPU\\(s\\)|Thread|Core|MHz|Cache size'
-            `; // Extracts CPU info using lscpu
-            const output = await this.execCommand(node.ip, command);
-
-            console.log("Command output:", output.trim().split("\n"));
-
-            const [cores, online, model, coresPerCluster, threads, clockMax, clockMin, cache] = output.trim().split("\n");
-
-            if (!model || !cores || !clockMin) {
-                throw new Error("Invalid CPU info fetched");
-            }
-
-            return {
-                model: model.split(":")[1].trim(),
-                online: online.split(":")[1].trim(),
-                cores: parseInt(cores.split(":")[1].trim()),
-                threads: parseInt(threads.split(":")[1].trim()),
-                clockMin: parseInt(clockMin.split(":")[1].trim()),
-                clockMax: parseInt(clockMax.split(":")[1].trim()),
-                cache: cache.split(":")[1].trim()
-            };
-        },
-        async fetchNetworkInterfaces(ip) {
-            const command = `
-                ip -o addr show | awk '/inet / {print $2, $4, $6}'
-            `; // Combines IP address and MAC address listing
-            const output = await this.execCommand(ip, command);
-
-            const lines = output.trim().split("\n");
-            const interfaces = [];
-
-            lines.forEach(line => {
-                const parts = line.trim().split(/\s+/);
-                if (parts.length === 3 || parts.length === 2) {
-                    const [name, ipWithMask, mac] = parts;
-                    const [ip, mask] = ipWithMask && ipWithMask.split("/") || [];
-                    interfaces.push({
-                        name: name.replace(/:$/, ""), // Remove trailing colon
-                        ip,
-                        mask,
-                        mac,
-                        gateway: null, // Could fetch using `ip route` if needed
-                        dns: [] // Could fetch using `/etc/resolv.conf` if needed
-                    });
-                }
-            });
-
-            if (!interfaces.length) {
-                throw new Error("No network interfaces found");
-            }
-
-            return interfaces;
-        },
-
-        async rebootNode(node) {
-            const command = "shutdown -r now"; // Reboots the node
-            return this.execCommand(node.ip, command);
-        },
+            return fs.readFile(this.settings.authorizedKeys, 'utf8');
+        }
     },
 
     created() {
-        this.sshKey = null;
-        this.connections = new Map();
+
     },
 
     async started() {
-        this.sshKey = await this.readSSHKey();
+
     },
 
     async stopped() {
-        this.sshKey = null;
-        await this.closeAllConnections();
     }
 }

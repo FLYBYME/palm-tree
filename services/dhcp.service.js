@@ -1,222 +1,105 @@
 "use strict";
+const DbService = require("@moleculer/database").Service;
+const { MoleculerClientError } = require("moleculer").Errors;
+const Context = require("moleculer").Context;
 
-const dhcp = require("dhcpjs");
 const os = require("os");
 const path = require("path");
 const Moniker = require('moniker');
 
-const EventEmitter = require('events').EventEmitter;
-const util = require('util');
-const dgram = require('dgram');
-const { get } = require("http");
-const client = require("tftp/lib/client");
-const V4Address = require('ip-address').Address4;
-const Protocol = require('dhcpjs').Protocol;
+const Lock = require("../lib/lock");
 
-const Responder = function (options) {
-    EventEmitter.call(this);
-
-    this.options = options || {};
-
-    this.socket = dgram.createSocket('udp4');
-    this.socket.on('error', (err) => {
-        logger.error(`Responder error:\n${err.stack}`);
-    });
-
-}
-
-util.inherits(Responder, EventEmitter);
-
-Responder.prototype.bind = function (host) {
-    let that = this;
-
-    this.socket.bind({ address: host }, () => {
-        that.socket.setTTL(1);
-        that.socket.setBroadcast(true);
-        console.info('bound to', host);
-    });
-}
-
-Responder.prototype.close = function () {
-    this.socket.close();
-}
-
-Responder.prototype.broadcastPacket = function (pkt, cb) {
-    let port = 68;
-    let host = this.options.broadcast || '255.255.255.255';
-    this.socket.send(pkt, 0, pkt.length, port, host, cb);
-}
-
-Responder.prototype.createPacket = function (pkt) {
-    if (!('xid' in pkt)) {
-        throw new Error('pkt.xid required');
-    }
+const dhcp = require("@network-utils/dhcp");
 
 
-    let ci = new Buffer(('ciaddr' in pkt) ? new V4Address(pkt.ciaddr).toArray() : [0, 0, 0, 0]);
-    let yi = new Buffer(('yiaddr' in pkt) ? new V4Address(pkt.yiaddr).toArray() : [0, 0, 0, 0]);
-    let si = new Buffer(('siaddr' in pkt) ? new V4Address(pkt.siaddr).toArray() : [0, 0, 0, 0]);
-    let gi = new Buffer(('giaddr' in pkt) ? new V4Address(pkt.giaddr).toArray() : [0, 0, 0, 0]);
 
-    if (!('chaddr' in pkt)) {
-        throw new Error('pkt.chaddr required');
-    }
-
-    let hw = new Buffer(pkt.chaddr.split(':').map((part) => {
-        return parseInt(part, 16);
-    }));
-
-    if (hw.length !== 6) {
-        throw new Error('pkt.chaddr malformed, only ' + hw.length + ' bytes');
-    }
-
-    let p = new Buffer(1500);
-    let i = 0;
-
-    p.writeUInt8(pkt.op, i++);
-    p.writeUInt8(pkt.htype, i++);
-    p.writeUInt8(pkt.hlen, i++);
-    p.writeUInt8(pkt.hops, i++);
-    p.writeUInt32BE(pkt.xid, i); i += 4;
-    p.writeUInt16BE(pkt.secs, i); i += 2;
-    p.writeUInt16BE(pkt.flags, i); i += 2;
-    ci.copy(p, i); i += ci.length;
-    yi.copy(p, i); i += yi.length;
-    si.copy(p, i); i += si.length;
-    gi.copy(p, i); i += gi.length;
-    hw.copy(p, i); i += hw.length;
-    p.fill(0, i, i + 10); i += 10; // hw address padding
-    p.fill(0, i, i + 192); i += 192;
-    p.writeUInt32BE(0x63825363, i); i += 4;
-
-    if (pkt.options && 'requestedIpAddress' in pkt.options) {
-        p.writeUInt8(50, i++); // option 50
-        let requestedIpAddress = new Buffer(new v4.Address(pkt.options.requestedIpAddress).toArray());
-        p.writeUInt8(requestedIpAddress.length, i++);
-        requestedIpAddress.copy(p, i); i += requestedIpAddress.length;
-    }
-
-    if (pkt.options && 'dhcpMessageType' in pkt.options) {
-        p.writeUInt8(53, i++); // option 53
-        p.writeUInt8(1, i++);  // length
-        p.writeUInt8(pkt.options.dhcpMessageType.value, i++);
-    }
-
-    if (pkt.options && 'serverIdentifier' in pkt.options) {
-        p.writeUInt8(54, i++); // option 54
-        let serverIdentifier = new Buffer(new v4.Address(pkt.options.serverIdentifier).toArray());
-        p.writeUInt8(serverIdentifier.length, i++);
-        serverIdentifier.copy(p, i); i += serverIdentifier.length;
-    }
-
-    if (pkt.options && 'parameterRequestList' in pkt.options) {
-        p.writeUInt8(55, i++); // option 55
-        let parameterRequestList = new Buffer(pkt.options.parameterRequestList);
-
-        if (parameterRequestList.length > 16) {
-            throw new Error('pkt.options.parameterRequestList malformed');
-        }
-
-        p.writeUInt8(parameterRequestList.length, i++);
-        parameterRequestList.copy(p, i); i += parameterRequestList.length;
-    }
-
-    if (pkt.options && 'clientIdentifier' in pkt.options) {
-        let clientIdentifier = new Buffer(pkt.options.clientIdentifier);
-        let optionLength = 1 + clientIdentifier.length;
-
-        if (optionLength > 0xff) {
-            throw new Error('pkt.options.clientIdentifier malformed');
-        }
-
-        p.writeUInt8(61, i++);           // option 61
-        p.writeUInt8(optionLength, i++); // length
-        p.writeUInt8(0, i++);            // hardware type 0
-        clientIdentifier.copy(p, i); i += clientIdentifier.length;
-    }
-
-    // option 255 - end
-    p.writeUInt8(0xff, i++);
-
-    // padding
-    if ((i % 2) > 0) {
-        p.writeUInt8(0, i++);
-    } else {
-        p.writeUInt16BE(0, i++);
-    }
-
-    let remaining = 300 - i;
-    if (remaining) {
-        p.fill(0, i, i + remaining); i += remaining;
-    }
-
-    return p.slice(0, i);
-}
-
-Responder.prototype.createOfferPacket = function (request) {
-
-    let pkt = {
-        op: Protocol.BOOTPMessageType.BOOTPREPLY.value,
-        htype: 0x01,
-        hlen: 0x06,
-        hops: 0x00,
-        xid: 0x00000000,
-        secs: 0x0000,
-        flags: 0x0000,
-        ciaddr: '0.0.0.0',// ciaddr is the IP address of the client
-        yiaddr: this.options.address,// yiaddr is the IP address of the client
-        siaddr: this.options.router,// siaddr is the IP address of the DHCP server
-        giaddr: '0.0.0.0',// giaddr is the IP address of the gateway
-    };
-
-    pkt.xid = request.xid;
-    pkt.chaddr = request.chaddr;
-    pkt.options = request.options;
-
-
-    return Responder.prototype.createPacket(pkt);
-}
-
-class Lease {
-    constructor(ip) {
-        this.ip = ip;
-        this.mac = null;
-        this.client = null;
-    }
-
-    setClient(client) {
-        this.client = client;
-    }
-
-    setMac(mac) {
-        this.mac = mac;
-    }
-
-    release() {
-        this.client = null;
-        this.mac = null;
-    }
-}
-
-
-/** @type {ServiceSchema} */
+/** 
+ * 
+ */
 module.exports = {
     name: "dhcp",
     version: 1,
+
+    mixins: [
+        DbService({
+            adapter: {
+                type: "NeDB",
+                options: "./db/dhcp.db"
+            }
+        })
+    ],
 
     /**
      * Settings
      */
     settings: {
+        fields: {
+            ip: { type: "string" },
+            mac: { type: "string" },
+
+            // next-server
+            nextServer: { type: "string" },
+            // tftp-server
+            tftpServer: { type: "string" },
+            // boot-file
+            bootFile: { type: "string" },
+            // netmask
+            netmask: { type: "string" },
+            // broadcast
+            broadcast: { type: "string" },
+            // lease-time
+            leaseTime: { type: "number" },
+
+
+            leaseStartTime: { type: "number", required: false },
+            leaseEndTime: { type: "number", required: false },
+
+            node: {
+                type: "string",
+                required: true,
+                populate: {
+                    action: "v1.nodes.resolve"
+                }
+            },
+
+            id: { type: "string", primaryKey: true, columnName: "_id" /*, generated: "user"*/ },
+            createdAt: {
+                type: "number",
+                readonly: true,
+                onCreate: () => Date.now(),
+                columnType: "double"
+            },
+            updatedAt: {
+                type: "number",
+                readonly: true,
+                onUpdate: () => Date.now(),
+                columnType: "double"
+            },
+            deletedAt: { type: "number", readonly: true, onRemove: () => Date.now() }
+        },
+
+        scopes: {
+            notDeleted: {
+                deletedAt: { $exists: false }
+            },
+        },
+
+        // Configure the scope as default scope
+        defaultScopes: ["notDeleted"],
+
+        // DHCP settings
         dhcp: {
             port: 67, // DHCP server port
-            address: "10.1.10.1", // DHCP server IP address
-            domainName: "one-host.ca", // Domain name for DHCP clients
-            range: 50, // Number of IPs in the pool
-            bootFile: "ipxe.efi", // Boot file for PXE clients
-            dns: ["1.1.1.1", "8.8.8.8"], // DNS servers for DHCP clients
-            subnetMask: "255.255.255.0", // Subnet mask
-            broadcast: "255.255.255.255",
+            serverAddress: "10.1.10.1", // DHCP server IP address
+            gateways: ["10.1.10.1"],
+            dns: ["10.1.10.1"],
+            range: [10, 99],
+
+            // pxe
+            nextServer: "10.1.10.1",
+            tftpServer: "10.1.10.1",
+            bootFile: "/ipxe.efi",
+            leaseTime: 3600
         },
     },
 
@@ -229,9 +112,7 @@ module.exports = {
      * Actions
      */
     actions: {
-        listLeases() {
-            return this.leases;
-        }
+
     },
 
     /**
@@ -245,103 +126,38 @@ module.exports = {
     methods: {
 
         async createServer() {
-            // create the dhcp server
-            const server = dhcp.createServer({
+            const serverAddress = this.settings.dhcp.serverAddress || '0.0.0.0';
+            const gateways = this.settings.dhcp.gateways || ['0.0.0.0'];
+            const dns = this.settings.dhcp.dns || ['0.0.0.0'];
 
+            const server = new dhcp.Server({
+                serverId: serverAddress,
+                gateways: gateways,
+                domainServer: dns,
             });
 
             this.server = server;
 
-            server.on('message', (m) => {
-                let vender = [];
-                if (m.options.vendorClassIdentifier) {
-                    vender = m.options.vendorClassIdentifier.split(':');
-                }
-
-                let mType = m.op.value;
-
-                const lease = this.getLease(m.chaddr.address);
-
-
-                if (mType === Protocol.DHCPMessageType.DHCPDISCOVER.value && vender[0] === "PXEClient") {
-                    let resp = new Responder({
-                        address: lease.ip,
-                        router: this.settings.dhcp.address,
-                        broadcast: this.settings.dhcp.broadcast,
-                        domainName: this.settings.dhcp.domainName,
-                        dns: this.settings.dhcp.dns,
-                        range: this.settings.dhcp.range,
-                        bootFile: this.settings.dhcp.bootFile
-                    });
-
-                    resp.bind(this.settings.dhcp.address);
-
-                    this.logger.info('PXEClient DHCPDISCOVER', m.xid);
-
-                    let pkt = resp.createOfferPacket({
-                        xid: m.xid,
-                        chaddr: m.chaddr.address,
-                        dhcpMessageType: Protocol.DHCPMessageType.DHCPOFFER.value,
-                        options: {
-                            
-                        }
-                    });
-
-                    resp.broadcastPacket(pkt, (err) => {
-                        if (err) {
-                            this.logger.error(err);
-                        } else {
-                            this.logger.info("Offering IP to", m.xid);
-                        }
-
-                        resp.close();
-                    });
-                }
-            });
-
-            server.on('error', (error) => {
-                this.logger.error('dhcp', error);
-            });
+            this.attachEvents(server);
 
             server.bind();
 
-            this.logger.info('DHCP Server started');
+            this.logger.info('DHCP Server created');
         },
 
-        getLease(mac) {
-
-            let lease = this.leases.get(mac);
-
-            if (!lease) {
-                lease = this.available.shift();
-
-                if (!lease) {
-                    this.logger.error('No more leases available');
-                    return null;
-                }
-
-
-                this.logger.info(`Assigning lease to ${mac} at ${lease.ip}`);
-
-                lease.setMac(mac);
-
-                this.leases.set(mac, lease);
-            }
-
-
-            return lease;
+        attachEvents(server) {
+            server.on('listening', () => {
+                this.logger.info('DHCP Server started');
+            });
+            server.on('discover', (event) => {
+                const ctx = new Context(this.broker);
+                this.handleDiscover(ctx, event);
+            });
+            server.on('request', (event) => {
+                const ctx = new Context(this.broker);
+                this.handleRequest(ctx, event);
+            });
         },
-
-        createLeasePool() {
-            const split = this.settings.dhcp.address.split('.');
-
-            const net = `${split[0]}.${split[1]}.${split[2]}`;
-            for (let i = 0; i < this.settings.dhcp.range; i++) {
-                this.available.push(new Lease(`${net}.${i + 10}`));
-            }
-        },
-
-
 
         async stopServer() {
             if (this.server) {
@@ -352,7 +168,127 @@ module.exports = {
             }
         },
 
+        getByMac(ctx, mac) {
+            return this.findEntity(ctx, { query: { mac } });
+        },
 
+        async createNewLease(ctx, mac) {
+            const lowerRange = this.settings.dhcp.range[0];
+            const upperRange = this.settings.dhcp.range[1];
+            const addressSplit = this.settings.dhcp.serverAddress.split('.');
+            const hostname = Moniker.choose();
+            await this.lock.acquire('dhcp');
+            for (let i = lowerRange; i <= upperRange; i++) {
+                const ip = `${addressSplit[0]}.${addressSplit[1]}.${addressSplit[2]}.${i}`;
+                const result = await this.findEntity(ctx, { query: { ip } });
+                if (!result) {
+                    this.logger.info(`DHCP Server creating new lease for ${ip}`);
+
+                    // register node
+                    let node = await ctx.call('v1.nodes.lookup', { ip });
+                    if (!node) {
+                        node = await ctx.call('v1.nodes.register', { ip });
+                        this.logger.info(`DHCP Server node registered for ${ip} with id ${node.id}`);
+                    }
+
+                    return this.createEntity(ctx, {
+                        ip,
+                        mac,
+                        node: node.id,
+                        nextServer: this.settings.dhcp.nextServer,
+                        tftpServer: this.settings.dhcp.tftpServer,
+                        bootFile: this.settings.dhcp.bootFile,
+                        leaseTime: this.settings.dhcp.leaseTime,
+                    }).then(async (entity) => {
+                        await this.lock.release('dhcp');
+                        return entity;
+                    })
+                }
+            }
+
+            await this.lock.release('dhcp');
+
+            this.logger.info(`DHCP Server no available IP address for ${mac}`);
+
+            return null;
+        },
+
+
+        async handleDiscover(ctx, event) {
+            const pkt = event.packet;
+
+            let lease = await this.getByMac(ctx, pkt.chaddr);
+            if (!lease) {
+                lease = await this.createNewLease(ctx, pkt.chaddr);
+            }
+
+            if (!lease) {
+                this.logger.info(`DHCP Server no available IP address for ${pkt.chaddr}`);
+                return;
+            }
+
+            const node = await ctx.call('v1.nodes.resolve', { id: lease.node });
+            if (!node) {
+                this.logger.info(`DHCP Server no available node for ${pkt.chaddr}`);
+                return;
+            }
+
+            const offer = new dhcp.Packet();
+            offer.yiaddr = lease.ip;
+            offer.op = dhcp.BOOTMessageType.reply;
+            offer.giaddr = pkt.giaddr;// gateway
+            offer.xid = pkt.xid;// transaction id
+            offer.flags = pkt.flags;// flags 
+            offer.chaddr = pkt.chaddr;// client mac address
+            offer.siaddr = this.settings.dhcp.serverAddress;
+
+            offer.options.push(new dhcp.DHCPMessageTypeOption(dhcp.DHCPMessageType.offer));// #53
+            offer.options.push(new dhcp.SubnetMaskOption(this.server.netmask));// #1
+
+            if (this.server.gateways.length) {
+                offer.options.push(new dhcp.GatewaysOption(this.server.gateways));// #3
+            }
+
+            if (this.server.domainServer.length) {
+                offer.options.push(new dhcp.DomainServerOption(this.server.domainServer));// #6
+            }
+
+            offer.options.push(new dhcp.AddressTimeOption(this.server.addressTime));// #51
+            offer.options.push(new dhcp.DHCPServerIdOption(this.server.serverId));// #54
+            offer.options.push(new dhcp.TftpServerOption(lease.tftpServer));// #66
+            offer.options.push(new dhcp.BootFileOption(lease.bootFile));// #67
+            offer.options.push(new dhcp.HostnameOption(node.hostname));// #12
+
+            this.server.send(offer);
+
+            this.logger.info(`DHCP Server discover to ${pkt.chaddr}`);
+        },
+        async handleRequest(ctx, event) {
+            const ack = this.server.createAck(event.packet);
+
+            const lease = await this.getByMac(ctx, event.packet.chaddr);
+            if (!lease) {
+                this.logger.info(`DHCP Server no available IP address for ${event.packet.chaddr}`);
+                return;
+            }
+
+            const node = await ctx.call('v1.nodes.resolve', { id: lease.node });
+            if (!node) {
+                this.logger.info(`DHCP Server no available node for ${pkt.chaddr}`);
+                return;
+            }
+
+            ack.yiaddr = lease.ip;
+            ack.siaddr = this.settings.dhcp.serverAddress;
+
+            ack.options.push(new dhcp.TftpServerOption(lease.tftpServer));// #66
+            ack.options.push(new dhcp.BootFileOption(lease.bootFile));// #67
+            ack.options.push(new dhcp.HostnameOption(node.hostname));// #12
+
+            this.server.send(ack);
+
+            this.logger.info(`DHCP Server request ack to ${event.packet.chaddr}`);
+        },
     },
 
     /**
@@ -360,17 +296,14 @@ module.exports = {
      */
     created() {
         this.server = null;
-        this.available = [];
-        this.leases = new Map();
-
-        this.createLeasePool();
+        this.lock = new Lock();
     },
 
     /**
      * Service started lifecycle event handler
      */
     async started() {
-        //await this.createServer();
+        await this.createServer();
     },
 
     /**
