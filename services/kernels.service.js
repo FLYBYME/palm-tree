@@ -222,10 +222,10 @@ module.exports = {
                 const installParams = [];
 
                 installParams.push(`k3os.install.silent=${k3os.silent}`);
-                installParams.push(`k3os.install.poweroff=${k3os.poweroff}`);
+                //installParams.push(`k3os.install.poweroff=${k3os.poweroff}`);
                 installParams.push(`k3os.install.mode=${k3os.mode}`);
                 installParams.push('k3os.install.config_url=http://${next-server}/' + k3os.config_url);
-                //installParams.push(`k3os.install.device=${node.device}`);
+                installParams.push(`k3os.install.device=${node.options.installDisk}`);
                 installParams.push('k3os.install.iso_url=http://${next-server}/' + k3os.iso_url);
 
                 kernelCMD.push(installParams.join(' '));

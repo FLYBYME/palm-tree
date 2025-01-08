@@ -73,9 +73,9 @@ module.exports = {
                 await this.handleK3OSConfig(ctx, req, res);
             } else if (req.url == '/ssh_keys') {
                 await this.handleSSHKeys(ctx, req, res);
-            } else if(req.url == '/apkovl') {
+            } else if (req.url == '/apkovl') {
                 await this.handleApkOvlUpload(ctx, req, res);
-            }else {
+            } else {
                 await this.handleMirror(ctx, req, res);
             }
         },
@@ -161,6 +161,11 @@ module.exports = {
         },
 
         async handleMirror(ctx, req, res) {
+            const ip = req.socket.remoteAddress.replace(/^.*:/, '');
+            const node = await ctx.call('v1.nodes.lookup', { ip });
+            if (!node) {
+                return this.sendError(req, res, 404, `Node with ip ${ip} not found`);
+            }
             // get the kernel name
             const kernelName = req.url.split('/')[1];
             if (!kernelName) {
@@ -180,6 +185,14 @@ module.exports = {
             }
 
             cache.requests.push({ ctx, req, res });
+
+            if (kernel.name == 'apline' && req.url == kernel.modloop) {
+                // update node state
+                await ctx.call('v1.nodes.setStatus', {
+                    id: node.id,
+                    status: 'running'
+                });
+            }
 
             if (cache.isDownloaded) {
                 this.logger.info(`Cache entry hit is downloaded for ${req.url}`);
@@ -372,6 +385,12 @@ module.exports = {
 
             // Respond with the YAML configuration
             res.end(yaml.stringify(config));
+
+            // update status
+            await ctx.call('v1.nodes.setStatus', {
+                id: node.id,
+                status: 'running'
+            });
         }
 
     },

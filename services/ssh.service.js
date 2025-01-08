@@ -66,7 +66,11 @@ module.exports = {
             },
             async handler(ctx) {
                 const node = await ctx.call('v1.nodes.resolve', { id: ctx.params.node });
-                const client = await this.createClient(node);
+                const client = await this.createClient({
+                    id: node.id,
+                    host: node.ip,
+                    port: 22
+                });
 
                 return new Promise((resolve, reject) => {
                     client.exec(ctx.params.command, (err, stream) => {
@@ -97,7 +101,12 @@ module.exports = {
             },
             async handler(ctx) {
                 const node = await ctx.call('v1.nodes.resolve', { id: ctx.params.node });
-                const client = await this.createClient(node);
+
+                const client = await this.createClient({
+                    id: node.id,
+                    host: node.ip,
+                    port: 22
+                });
 
                 return new Promise((resolve, reject) => {
                     client.sftp((err, sftp) => {
@@ -139,12 +148,15 @@ module.exports = {
 
             client.on('error', (err) => {
                 this.logger.error(`SSH Client error: ${err.message}`);
+                this.clients.delete(options.id);
+                client.end();
             });
 
             const privateKey = await fs.readFile(this.settings.ssh.privateKey, 'utf8');
 
             client.on('connect', () => {
                 this.logger.info('SSH Client connected');
+
             });
 
             return new Promise((resolve, reject) => {
@@ -157,7 +169,13 @@ module.exports = {
                     port: options.port,
                     username: this.settings.ssh.user,
                     privateKey
+                }).on('error', (err) => {
+                    this.clients.delete(options.id);
+                    client.end();
+                    reject(err);
                 });
+
+                this.logger.info(`SSH Client connecting to ${options.host}:${options.port}`);
             });
         },
         /**
@@ -169,6 +187,7 @@ module.exports = {
             }
             this.clients.clear();
         },
+
     },
 
     created() {
@@ -176,7 +195,7 @@ module.exports = {
     },
 
     async started() {
-        await this.readSshKeys();
+        //await this.readSshKeys();
     },
 
     async stopped() {

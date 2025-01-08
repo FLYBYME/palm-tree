@@ -50,9 +50,10 @@ module.exports = {
             // lease-time
             leaseTime: { type: "number" },
 
-
-            leaseStartTime: { type: "number", required: false },
-            leaseEndTime: { type: "number", required: false },
+            discoverTime: { type: "number", required: false },
+            offerTime: { type: "number", required: false },
+            requestTime: { type: "number", required: false },
+            releaseTime: { type: "number", required: false },
 
             node: {
                 type: "string",
@@ -112,7 +113,18 @@ module.exports = {
      * Actions
      */
     actions: {
-
+        lookup: {
+            rest: {
+                method: "GET",
+                path: "/lookup/:ip",
+            },
+            params: {
+                ip: { type: "string", optional: false }
+            },
+            async handler(ctx) {
+                return this.getByIp(ctx, ctx.params.ip);
+            }
+        }
     },
 
     /**
@@ -140,7 +152,7 @@ module.exports = {
 
             this.attachEvents(server);
 
-            server.bind();
+            server.bind('0.0.0.0');
 
             this.logger.info('DHCP Server created');
         },
@@ -157,6 +169,22 @@ module.exports = {
                 const ctx = new Context(this.broker);
                 this.handleRequest(ctx, event);
             });
+            server.on('inform', (event) => {
+                const ctx = new Context(this.broker);
+                this.logger.info(`DHCP Server inform from ${event.packet.chaddr}`);
+            });
+            server.on('release', (event) => {
+                const ctx = new Context(this.broker);
+                this.logger.info(`DHCP Server release from ${event.packet.chaddr}`);
+            });
+            server.on('decline', (event) => {
+                const ctx = new Context(this.broker);
+                this.logger.info(`DHCP Server decline from ${event.packet.chaddr}`);
+            });
+            server.on('dhcp', (event) => {
+                const ctx = new Context(this.broker);
+                this.logger.info(`DHCP Server dhcp from ${event.packet.chaddr}`);
+            });
         },
 
         async stopServer() {
@@ -172,11 +200,14 @@ module.exports = {
             return this.findEntity(ctx, { query: { mac } });
         },
 
+        getByIp(ctx, ip) {
+            return this.findEntity(ctx, { query: { ip } });
+        },
+
         async createNewLease(ctx, mac) {
             const lowerRange = this.settings.dhcp.range[0];
             const upperRange = this.settings.dhcp.range[1];
             const addressSplit = this.settings.dhcp.serverAddress.split('.');
-            const hostname = Moniker.choose();
             await this.lock.acquire('dhcp');
             for (let i = lowerRange; i <= upperRange; i++) {
                 const ip = `${addressSplit[0]}.${addressSplit[1]}.${addressSplit[2]}.${i}`;
@@ -234,13 +265,13 @@ module.exports = {
             }
 
             const offer = new dhcp.Packet();
-            offer.yiaddr = lease.ip;
             offer.op = dhcp.BOOTMessageType.reply;
-            offer.giaddr = pkt.giaddr;// gateway
             offer.xid = pkt.xid;// transaction id
             offer.flags = pkt.flags;// flags 
             offer.chaddr = pkt.chaddr;// client mac address
-            offer.siaddr = this.settings.dhcp.serverAddress;
+            offer.siaddr = this.settings.dhcp.serverAddress;// server address
+            offer.giaddr = this.settings.dhcp.serverAddress;// gateway address
+            offer.yiaddr = lease.ip;
 
             offer.options.push(new dhcp.DHCPMessageTypeOption(dhcp.DHCPMessageType.offer));// #53
             offer.options.push(new dhcp.SubnetMaskOption(this.server.netmask));// #1
@@ -253,6 +284,7 @@ module.exports = {
                 offer.options.push(new dhcp.DomainServerOption(this.server.domainServer));// #6
             }
 
+            offer.options.push(new dhcp.BroadcastAddressOption('255.255.255.255'));// #28
             offer.options.push(new dhcp.AddressTimeOption(this.server.addressTime));// #51
             offer.options.push(new dhcp.DHCPServerIdOption(this.server.serverId));// #54
             offer.options.push(new dhcp.TftpServerOption(lease.tftpServer));// #66
@@ -262,6 +294,11 @@ module.exports = {
             this.server.send(offer);
 
             this.logger.info(`DHCP Server discover to ${pkt.chaddr}`);
+
+            // update lease with discover time
+            await this.updateEntity(ctx, { id: lease.id, discoverTime: new Date() });
+
+            return offer;
         },
         async handleRequest(ctx, event) {
             const ack = this.server.createAck(event.packet);
@@ -274,13 +311,18 @@ module.exports = {
 
             const node = await ctx.call('v1.nodes.resolve', { id: lease.node });
             if (!node) {
-                this.logger.info(`DHCP Server no available node for ${pkt.chaddr}`);
+                this.logger.info(`DHCP Server no available node for ${event.packet.chaddr}`);
                 return;
             }
 
-            ack.yiaddr = lease.ip;
+            ack.xid = event.packet.xid;// transaction id
+            ack.flags = event.packet.flags;// flags 
+            ack.chaddr = event.packet.chaddr;// client mac address
             ack.siaddr = this.settings.dhcp.serverAddress;
+            ack.giaddr = this.settings.dhcp.serverAddress;
+            ack.yiaddr = lease.ip;
 
+            ack.options.push(new dhcp.BroadcastAddressOption('255.255.255.255'));// #28
             ack.options.push(new dhcp.TftpServerOption(lease.tftpServer));// #66
             ack.options.push(new dhcp.BootFileOption(lease.bootFile));// #67
             ack.options.push(new dhcp.HostnameOption(node.hostname));// #12
@@ -288,6 +330,11 @@ module.exports = {
             this.server.send(ack);
 
             this.logger.info(`DHCP Server request ack to ${event.packet.chaddr}`);
+
+            // update lease with request time
+            await this.updateEntity(ctx, { id: lease.id, requestTime: new Date() });
+
+            return ack;
         },
     },
 

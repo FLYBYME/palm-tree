@@ -1,0 +1,92 @@
+<button type="button" class="btn btn-primary float-right" ng-click="$ctrl.showEditNode()">Edit</button>
+<h1 class="text-center">
+    Node: {{$ctrl.node.hostname}}
+</h1>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-lg-3 col-md-6">
+            <div class="card text-white bg-primary mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Hostname</h5>
+                    <p class="card-text">{{$ctrl.node.hostname}}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="card text-white bg-success mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">IP Address</h5>
+                    <p class="card-text">{{$ctrl.lease.ip}}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="card text-white bg-warning mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">MAC Address</h5>
+                    <p class="card-text">{{$ctrl.lease.mac}}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="card text-white bg-danger mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Next Server</h5>
+                    <p class="card-text">{{$ctrl.lease.nextServer}}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 col-sm-12">
+            <div class="card">
+                <div class="card-header">
+                    Kernel Info
+                </div>
+                <div class="card-body">
+                    <ul class="list-group">
+                        <li class="list-group-item">Name: <strong>{{$ctrl.kernel.name}}</strong></li>
+                        <li class="list-group-item">Version: <strong>{{$ctrl.kernel.version}}</strong></li>
+                        <li class="list-group-item">vmlinuz: <strong>{{$ctrl.kernel.vmlinuz}}</strong></li>
+                        <li class="list-group-item">Initramfs: <strong>{{$ctrl.kernel.initramfs}}</strong></li>
+                        <li class="list-group-item">Modloop: <strong>{{$ctrl.kernel.modloop}}</strong></li>
+                        <li class="list-group-item">Repo: <strong>{{$ctrl.kernel.repo}}</strong></li>
+                        <li class="list-group-item">Archive: <strong>{{$ctrl.kernel.archive}}</strong></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+// node edit model
+<div class="modal fade" id="editNodeModal" tabindex="-1" role="dialog" aria-labelledby="editNodeModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editNodeModalLabel">Edit Node</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="hostname">Hostname</label>
+                    <input type="text" class="form-control" id="hostname" ng-model="$ctrl.editNode.hostname">
+                </div>
+                <div class="form-group">
+                    <label for="kernel">Kernel</label>
+                    <select class="form-control" id="kernel" ng-model="$ctrl.editNode.kernel">
+                        <option ng-repeat="kernel in $ctrl.kernels" value="{{ kernel.id }}">{{ kernel.name }}</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" ng-click="$ctrl.updateNode()">Save changes</button>
+            </div>
+        </div>
+    </div>
+</div>

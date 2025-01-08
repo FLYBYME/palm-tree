@@ -125,6 +125,11 @@ module.exports = {
 
             this.logger.info(`[${req.stats.remoteAddress}:${req.stats.remotePort}] (${req.file}) serving boot file...`, bootFile);
 
+            await ctx.call('v1.nodes.setStatus', {
+                id: node.id,
+                status: 'booting'
+            });
+
             return this.serveFile(req, res, null, bootFile);
         },
 

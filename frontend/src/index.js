@@ -14,3 +14,4 @@ import './services/api.js';
 
 import './controllers/home/controller.js';
 import './controllers/nodes/controller.js';
+import './controllers/node/controller.js';

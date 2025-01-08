@@ -5,11 +5,13 @@ const fs = require('fs').promises;
 const Moniker = require('moniker');
 const wol = require('wake_on_lan');
 const crypto = require('crypto');
+const { default: mod } = require("moleculer");
+const { networkInterfaces } = require("os");
 
 
 module.exports = {
     name: "nodes",
-    version:1,
+    version: 1,
 
     mixins: [
         DbService({
@@ -54,7 +56,66 @@ module.exports = {
 
             password: { type: "string" },
             authorizedKeys: { type: "string" },
-            controlNode: { type: "boolean", required: false, default: false },
+
+            stage: {
+                type: "string",
+                required: false,
+                enum: [
+                    "commissioning",
+                    "commissioned",
+                    "provisioning",
+                    "provisioned"
+                ],
+                default: "commissioning"
+            },
+
+            status: {
+                type: "string",
+                required: false,
+                enum: [
+                    "booting",
+                    "running",
+                    "pending",
+                    "failed",
+                    "unreachable",
+                    "unknown"
+                ],
+                default: "unknown"
+            },
+
+            // core count
+            cores: { type: "number", required: false, default: 1 },
+            cpuModel: { type: "string", required: false },
+            memory: { type: "number", required: false, default: 1024 },
+            disks: {
+                type: "array",
+                items: {
+                    type: "object",
+                    required: true,
+                    props: {
+                        name: { type: "string", required: true },
+                        size: { type: "number", required: true }
+                    }
+                },
+                required: false,
+                default: []
+            },
+            networkInterfaces: {
+                type: "array",
+                items: {
+                    type: "object",
+                    required: true,
+                    props: {
+                        name: { type: "string", required: true },
+                        mac: { type: "string", required: true }
+                    }
+                },
+                required: false,
+                default: []
+            },
+
+            // options
+            options: { type: "object", required: false, default: {} },
 
 
             id: { type: "string", primaryKey: true, columnName: "_id" /*, generated: "user"*/ },
@@ -150,8 +211,65 @@ module.exports = {
             }
         },
 
+        setState: {
+            rest: {
+                method: "POST",
+                path: "/:id/set-state",
+            },
+            params: {
+                id: { type: "string", optional: false },
+                state: { type: "string", optional: false }
+            },
+            async handler(ctx) {
+                const { id, state } = ctx.params;
 
-        setMLease: {
+                const node = await this.getNodeById(ctx, id);
+                if (!node) {
+                    throw new MoleculerClientError(
+                        `Node with id ${id} not found`,
+                        404,
+                        "NODE_NOT_FOUND",
+                        { id }
+                    );
+                }
+
+                return this.updateEntity(ctx, {
+                    id: node.id,
+                    stage: state
+                });
+            }
+        },
+
+        setStatus: {
+            rest: {
+                method: "POST",
+                path: "/:id/set-status",
+            },
+            params: {
+                id: { type: "string", optional: false },
+                status: { type: "string", optional: false }
+            },
+            async handler(ctx) {
+                const { id, status } = ctx.params;
+
+                const node = await this.getNodeById(ctx, id);
+                if (!node) {
+                    throw new MoleculerClientError(
+                        `Node with id ${id} not found`,
+                        404,
+                        "NODE_NOT_FOUND",
+                        { id }
+                    );
+                }
+
+                return this.updateEntity(ctx, {
+                    id: node.id,
+                    status
+                });
+            }
+        },
+
+        setLease: {
             rest: {
                 method: "POST",
                 path: "/:id/set-lease",
@@ -243,6 +361,101 @@ module.exports = {
             }
         },
 
+        getSystemInfo: {
+            rest: {
+                method: "GET",
+                path: "/:id/system-info",
+            },
+            params: {
+                id: { type: "string", optional: false }
+            },
+            async handler(ctx) {
+                const { id } = ctx.params;
+
+                const node = await this.getNodeById(ctx, id);
+                if (!node) {
+                    throw new MoleculerClientError(
+                        `Node with id ${id} not found`,
+                        404,
+                        "NODE_NOT_FOUND",
+                        { id }
+                    );
+                }
+
+                const cpuInfo = await ctx.call('v1.ssh.exec', {
+                    node: node.id,
+                    command: "cat /proc/cpuinfo"
+                }).then(info => {
+                    return this.parseCpuinfoToJson(info);
+                });
+                const memoryInfo = await ctx.call('v1.ssh.exec', {
+                    node: node.id,
+                    command: "cat /proc/meminfo"
+                }).then(info => {
+                    return this.parseMeminfoToJson(info);
+                });
+                const diskUsage = await ctx.call('v1.ssh.exec', {
+                    node: node.id,
+                    command: "lsblk --json"
+                }).then(info => {
+                    return this.parseLsblkToJson(JSON.parse(info));
+                });
+                const networkInfo = await ctx.call('v1.ssh.exec', {
+                    node: node.id,// network devices
+                    command: "ip link"
+                }).then(info => {
+                    return this.parseIpLinkToJson(info);
+                });
+
+                const update = {
+                    id: node.id,
+                    cores: cpuInfo.cores,
+                    cpuModel: cpuInfo.model,
+                    memory: memoryInfo.memTotal,
+                    disks: diskUsage.disks,
+                    networkInterfaces: networkInfo.networkInterfaces
+                };
+
+                return this.updateEntity(ctx, update);
+            }
+        },
+
+        commission: {
+            rest: {
+                method: "POST",
+                path: "/:id/commission",
+            },
+            params: {
+                id: { type: "string", optional: false }
+            },
+            async handler(ctx) {
+                const { id } = ctx.params;
+
+                const node = await this.getNodeById(ctx, id);
+                if (!node) {
+                    throw new MoleculerClientError(
+                        `Node with id ${id} not found`,
+                        404,
+                        "NODE_NOT_FOUND",
+                        { id }
+                    );
+                }
+
+                // get system info
+                let updatedNode = await ctx.call('v1.nodes.getSystemInfo', { id: node.id });
+
+                updatedNode = await this.updateEntity(ctx, {
+                    id: node.id,
+                    stage: "commissioned",
+                    options: {
+                        installDisk: "/dev/" + updatedNode.disks.sort((a, b) => b.size - a.size)[0].name
+                    }
+                });
+
+
+                return updatedNode;
+            }
+        }
     },
 
     events: {},
@@ -258,6 +471,129 @@ module.exports = {
                 }
             });
         },
+
+        parseCpuinfoToJson(cpuInfo) {
+            const entries = cpuInfo.split('\n\n'); // Each processor block is separated by a double newline
+            const lines = entries[0].split('\n'); // Each line is separated by a newline
+
+            const processor = {
+                cores: entries.length - 1,
+                model: '',
+                cache: 0,
+                frequency: ''
+            };
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (line.includes('model name')) {
+                    processor.model = line.split(':')[1].trim();
+                } else if (line.includes('cache size')) {
+                    processor.cache = line.split(':')[1].trim();
+                } else if (line.includes('cpu MHz')) {
+                    processor.frequency = line.split(':')[1].trim();
+                }
+            }
+
+            return processor;
+        },
+        parseLsblkToJson(json) {
+
+            const disks = [];
+            for (const disk of json.blockdevices) {
+                // filter ram disk
+                if (disk.name.includes('ram') || disk.name.includes('loop') || disk.name.includes('boot')) {
+                    continue;
+                }
+
+
+                // convert size to number 0B,14.8G,120M
+                const byteType = disk.size.slice(-1);
+
+                if (byteType === 'B') {
+                    disk.size = disk.size.slice(0, -1);
+                    disk.size = Number(disk.size);
+
+                } else if (byteType === 'G') {
+                    disk.size = disk.size.slice(0, -1);
+                    disk.size = Number(disk.size) * 1024 * 1024 * 1024;
+
+                } else if (byteType === 'M') {
+                    disk.size = disk.size.slice(0, -1);
+                    disk.size = Number(disk.size) * 1024 * 1024;
+                }
+
+                const diskInfo = {
+                    name: disk.name,
+                    size: disk.size,
+                    type: disk.type
+                };
+                disks.push(diskInfo);
+            }
+
+
+            return { disks };
+        },
+        parseIpLinkToJson(input) {
+            const interfaces = [];
+            const lines = input.split("\n");
+
+            let currentInterface = null;
+
+            for (const line of lines) {
+                if (/^\d+:\s/.test(line)) {
+                    // Matches lines starting with an interface identifier, e.g., "1: lo:"
+                    const match = line.match(/^(\d+):\s(\S+):\s<(.*?)>\smtu\s(\d+)\sqdisc\s(\S+)\sstate\s(\S+)(?:\smode\s(\S+))?/);
+                    if (match) {
+                        if (currentInterface) {
+                            interfaces.push(currentInterface);
+                        }
+                        currentInterface = {
+                            id: parseInt(match[1], 10),
+                            name: match[2],
+                            flags: match[3].split(","),
+                            mtu: parseInt(match[4], 10),
+                            qdisc: match[5],
+                            state: match[6],
+                            mode: match[7] || null,
+                            details: {}
+                        };
+                    }
+                } else if (/^\s+link\//.test(line)) {
+                    // Matches lines with link details, e.g., "link/loopback"
+                    const match = line.match(/^\s+link\/(\S+)\s([0-9a-f:]+)\sbrd\s([0-9a-f:]+)/);
+                    if (match && currentInterface) {
+                        currentInterface.details = {
+                            type: match[1],
+                            address: match[2],
+                            broadcast: match[3]
+                        };
+                    }
+                }
+            }
+
+            if (currentInterface) {
+                interfaces.push(currentInterface);
+            }
+
+            return { networkInterfaces: interfaces.map(i => ({ name: i.name, mac: i.details.address })).filter(i => i.name !== 'lo') };
+        },
+        parseMeminfoToJson(input) {
+            const lines = input.split("\n");// Each line is separated by a newline
+
+            const result = {
+                memTotal: 0
+            };
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (line.includes('MemTotal')) {
+                    result.memTotal = Number(line.split(':')[1].trim().split(' ')[0]);
+                }
+            }
+
+            return result;
+        },
+
         async getAuthorizedKeys(ctx) {
             const stats = await fs.stat(this.settings.authorizedKeys).catch(() => false);
             if (!stats) {
