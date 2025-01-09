@@ -66,11 +66,24 @@ module.exports = {
             },
             async handler(ctx) {
                 const node = await ctx.call('v1.nodes.resolve', { id: ctx.params.node });
-                const client = await this.createClient({
-                    id: node.id,
-                    host: node.ip,
-                    port: 22
-                });
+                if (!node) {
+                    throw new MoleculerClientError(
+                        `Node with id ${ctx.params.node} not found`,
+                        404,
+                        "NODE_NOT_FOUND",
+                        { id: ctx.params.node }
+                    );
+                }
+                const kernel = await ctx.call('v1.kernels.resolve', { id: node.kernel });
+                if (!kernel) {
+                    throw new MoleculerClientError(
+                        `Kernel name ${node.kernel} not found`,
+                        404,
+                        "KERNEL_NOT_FOUND",
+                        { id: node.kernel }
+                    );
+                }
+                const client = await this.createClient(node, kernel);
 
                 return new Promise((resolve, reject) => {
                     client.exec(ctx.params.command, (err, stream) => {
@@ -101,13 +114,26 @@ module.exports = {
             },
             async handler(ctx) {
                 const node = await ctx.call('v1.nodes.resolve', { id: ctx.params.node });
+                if (!node) {
+                    throw new MoleculerClientError(
+                        `Node with id ${ctx.params.node} not found`,
+                        404,
+                        "NODE_NOT_FOUND",
+                        { id: ctx.params.node }
+                    );
+                }
+                const kernel = await ctx.call('v1.kernels.resolve', { id: node.kernel });
+                if (!kernel) {
+                    throw new MoleculerClientError(
+                        `Kernel name ${node.kernel} not found`,
+                        404,
+                        "KERNEL_NOT_FOUND",
+                        { id: node.kernel }
+                    );
+                }
 
-                const client = await this.createClient({
-                    id: node.id,
-                    host: node.ip,
-                    port: 22
-                });
-
+                const client = await this.createClient(node, kernel);
+                
                 return new Promise((resolve, reject) => {
                     client.sftp((err, sftp) => {
                         if (err) {
@@ -134,28 +160,27 @@ module.exports = {
     methods: {
         /**
          * Create a client
-         * @param {Object} options
          */
-        async createClient(options) {
+        async createClient(node, kernel) {
 
-            if (this.clients.has(options.id)) {
-                return this.clients.get(options.id);
+            if (this.clients.has(node.id)) {
+                return this.clients.get(node.id);
             }
 
             const client = new ssh.Client();
 
-            this.clients.set(options.id, client);
+            this.clients.set(node.id, client);
 
             client.on('error', (err) => {
                 this.logger.error(`SSH Client error: ${err.message}`);
-                this.clients.delete(options.id);
+                this.clients.delete(node.id);
                 client.end();
             });
 
             const privateKey = await fs.readFile(this.settings.ssh.privateKey, 'utf8');
 
             client.on('connect', () => {
-                this.logger.info('SSH Client connected');
+                this.logger.info(`SSH Client connected to ${node.ip}:22`);
 
             });
 
@@ -165,17 +190,17 @@ module.exports = {
                 });
 
                 client.connect({
-                    host: options.host,
-                    port: options.port,
-                    username: this.settings.ssh.user,
+                    host: node.ip,
+                    port: 22,
+                    username: kernel.name == 'k3os' ? 'rancher' : 'root',
                     privateKey
                 }).on('error', (err) => {
-                    this.clients.delete(options.id);
+                    this.clients.delete(node.id);
                     client.end();
                     reject(err);
                 });
 
-                this.logger.info(`SSH Client connecting to ${options.host}:${options.port}`);
+                this.logger.info(`SSH Client connecting to ${node.ip}:22`);
             });
         },
         /**

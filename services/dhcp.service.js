@@ -124,13 +124,39 @@ module.exports = {
             async handler(ctx) {
                 return this.getByIp(ctx, ctx.params.ip);
             }
-        }
+        },
+
+
+        clearDB: {
+            rest: {
+                method: "POST",
+                path: "/clear"
+            },
+            async handler(ctx) {
+                const count = await this.countEntities(null, {});
+                if (count > 0) {
+                    await this.removeEntities(null, {});
+                    this.logger.info(`DHCP Server leases cleared`);
+                }
+                return { message: `${count} leases deleted.` };
+            },
+        },
     },
 
     /**
      * Events
      */
-    events: {},
+    events: {
+        async "nodes.remove"(ctx) {
+            const node = ctx.params.data;
+            const found = await this.findEntity(ctx, { query: { node: node.id } });
+            if (found) {
+                await this.removeEntity(ctx, { id: found.id });
+            }
+
+            this.logger.info(`DHCP Server node ${node.id} removed`);
+        }
+    },
 
     /**
      * Methods
@@ -183,7 +209,7 @@ module.exports = {
             });
             server.on('dhcp', (event) => {
                 const ctx = new Context(this.broker);
-                this.logger.info(`DHCP Server dhcp from ${event.packet.chaddr}`);
+                //this.logger.info(`DHCP Server dhcp from ${event.packet.chaddr}`);
             });
         },
 
@@ -244,6 +270,41 @@ module.exports = {
             return null;
         },
 
+        async setDHCPOptions(ctx, packet, node, lease) {
+            packet.options.push(new dhcp.HostnameOption(node.hostname));
+            packet.options.push(new dhcp.DomainNameOption('cloud.local'));
+            packet.options.push(new dhcp.AddressRequestOption(lease.ip));
+            packet.options.push(new dhcp.DHCPServerIdOption(lease.nextServer));
+            packet.options.push(new dhcp.SubnetMaskOption(this.settings.dhcp.netmask));
+            packet.options.push(new dhcp.BroadcastAddressOption('255.255.255.255'));
+            packet.options.push(new dhcp.AddressTimeOption(lease.leaseTime));
+            packet.options.push(new dhcp.RenewalTimeOption(lease.leaseTime));
+            packet.options.push(new dhcp.RebindingTimeOption(lease.leaseTime));
+
+            if (node.stage !== "provisioned") {
+                packet.options.push(new dhcp.BootFileOption(lease.bootFile));
+                packet.options.push(new dhcp.TftpServerOption(lease.tftpServer));
+            }
+
+            packet.options.push(new dhcp.GatewaysOption([lease.nextServer]));
+            //packet.options.push(new dhcp.DomainServerOption([lease.nextServer]));
+            packet.options.push(new dhcp.BroadcastAddressOption('255.255.255.255'));
+        },
+
+        async createPacket(ctx, pkt, node, lease) {
+
+            const packet = new dhcp.Packet();
+            packet.op = dhcp.BOOTMessageType.reply;
+            packet.xid = pkt.xid;// transaction id
+            packet.flags = pkt.flags;// flags 
+            packet.chaddr = pkt.chaddr;// client mac address
+            packet.siaddr = lease.nextServer;// 
+            packet.giaddr = lease.nextServer;// gateway address
+            packet.yiaddr = lease.ip;
+
+            return packet;
+        },
+
 
         async handleDiscover(ctx, event) {
             const pkt = event.packet;
@@ -274,21 +335,20 @@ module.exports = {
             offer.yiaddr = lease.ip;
 
             offer.options.push(new dhcp.DHCPMessageTypeOption(dhcp.DHCPMessageType.offer));// #53
-            offer.options.push(new dhcp.SubnetMaskOption(this.server.netmask));// #1
+            offer.options.push(new dhcp.SubnetMaskOption('255.255.255.0'));// #1
 
-            if (this.server.gateways.length) {
-                offer.options.push(new dhcp.GatewaysOption(this.server.gateways));// #3
-            }
+            offer.options.push(new dhcp.GatewaysOption([lease.nextServer]));// #3
 
-            if (this.server.domainServer.length) {
-                offer.options.push(new dhcp.DomainServerOption(this.server.domainServer));// #6
-            }
+
+            offer.options.push(new dhcp.DomainServerOption(['1.1.1.1']));// #6
 
             offer.options.push(new dhcp.BroadcastAddressOption('255.255.255.255'));// #28
-            offer.options.push(new dhcp.AddressTimeOption(this.server.addressTime));// #51
+            offer.options.push(new dhcp.AddressTimeOption('23.186.168.1'));// #51
             offer.options.push(new dhcp.DHCPServerIdOption(this.server.serverId));// #54
-            offer.options.push(new dhcp.TftpServerOption(lease.tftpServer));// #66
-            offer.options.push(new dhcp.BootFileOption(lease.bootFile));// #67
+            if (node.stage !== "provisioned") {
+                offer.options.push(new dhcp.TftpServerOption(lease.tftpServer));// #66
+                offer.options.push(new dhcp.BootFileOption(lease.bootFile));// #67
+            }
             offer.options.push(new dhcp.HostnameOption(node.hostname));// #12
 
             this.server.send(offer);
@@ -301,35 +361,39 @@ module.exports = {
             return offer;
         },
         async handleRequest(ctx, event) {
-            const ack = this.server.createAck(event.packet);
+            const pkt = event.packet;
 
-            const lease = await this.getByMac(ctx, event.packet.chaddr);
+            const lease = await this.getByMac(ctx, pkt.chaddr);
             if (!lease) {
-                this.logger.info(`DHCP Server no available IP address for ${event.packet.chaddr}`);
+                this.logger.info(`DHCP Server no available IP address for ${pkt.chaddr}`);
                 return;
             }
 
             const node = await ctx.call('v1.nodes.resolve', { id: lease.node });
             if (!node) {
-                this.logger.info(`DHCP Server no available node for ${event.packet.chaddr}`);
+                this.logger.info(`DHCP Server no available node for ${lease.mac}`);
                 return;
             }
+
+            const ack = await this.server.createAck(pkt);
 
             ack.xid = event.packet.xid;// transaction id
             ack.flags = event.packet.flags;// flags 
             ack.chaddr = event.packet.chaddr;// client mac address
-            ack.siaddr = this.settings.dhcp.serverAddress;
-            ack.giaddr = this.settings.dhcp.serverAddress;
+            ack.siaddr = lease.nextServer;// server address
+            ack.giaddr = lease.nextServer;// gateway address
             ack.yiaddr = lease.ip;
 
             ack.options.push(new dhcp.BroadcastAddressOption('255.255.255.255'));// #28
-            ack.options.push(new dhcp.TftpServerOption(lease.tftpServer));// #66
-            ack.options.push(new dhcp.BootFileOption(lease.bootFile));// #67
+            if (node.stage !== "provisioned") {
+                ack.options.push(new dhcp.BootFileOption(lease.bootFile));// #67
+                ack.options.push(new dhcp.TftpServerOption(lease.tftpServer));// #66
+            }
             ack.options.push(new dhcp.HostnameOption(node.hostname));// #12
 
             this.server.send(ack);
 
-            this.logger.info(`DHCP Server request ack to ${event.packet.chaddr}`);
+            this.logger.info(`DHCP Server request ack to ${lease.mac}`);
 
             // update lease with request time
             await this.updateEntity(ctx, { id: lease.id, requestTime: new Date() });

@@ -9,6 +9,7 @@ const mime = require('mime');
 const yaml = require('json2yaml')
 const handler = require('serve-handler');
 const { createReadStream, createWriteStream } = require('fs');
+const crypto = require('crypto');
 
 
 /**
@@ -186,7 +187,7 @@ module.exports = {
 
             cache.requests.push({ ctx, req, res });
 
-            if (kernel.name == 'apline' && req.url == kernel.modloop) {
+            if (kernel.name == 'alpine' && req.url == `/${kernel.modloop}`) {
                 // update node state
                 await ctx.call('v1.nodes.setStatus', {
                     id: node.id,
@@ -330,6 +331,16 @@ module.exports = {
                 return this.sendError(req, res, 404, `Keys for node ${node.id} not found`);
             }
 
+            if (node.controlNode && !node.token) {
+                const token = crypto.randomBytes(32).toString('hex');
+                await ctx.call('v1.nodes.setToken', { id: node.id, token });
+                node.token = token;
+            } else {
+                const controlNode = await ctx.call('v1.nodes.controlNode');
+                await ctx.call('v1.nodes.setToken', { id: controlNode.id, token: controlNode.token });
+                node.token = controlNode.token;
+            }
+
             const k3sArgs = [];
             const config = {
                 hostname: node.hostname,
@@ -383,6 +394,8 @@ module.exports = {
                 k3sArgs.push('agent');
             }
 
+            console.log(config);
+
             // Respond with the YAML configuration
             res.end(yaml.stringify(config));
 
@@ -391,6 +404,12 @@ module.exports = {
                 id: node.id,
                 status: 'running'
             });
+            await ctx.call('v1.nodes.setStage', {
+                id: node.id,
+                stage: 'provisioned'
+            });
+
+            this.logger.info(`Node ${node.name} has been configured for K3OS. Control Node: ${node.controlNode}`);
         }
 
     },

@@ -30,6 +30,15 @@ class NodeController {
         this.kernels = [];
 
         this.getNode();
+        this.watch();
+    }
+
+    watch() {
+        const watch = () => {
+            this.getNode();
+        };
+        const timer = setInterval(watch, 5000);
+        this.$scope.$on('$destroy', () => clearInterval(timer));
     }
 
     getNode() {
@@ -76,9 +85,57 @@ class NodeController {
         this.api.patch(`/v1/nodes/${this.nodeID}`, {
             ip: this.editNode.ip,
             lease: this.editNode.lease,
-            kernel: this.editNode.kernel
+            kernel: this.editNode.kernel,
+            disks: this.editNode.disks
         })
             .then(() => $('#editNodeModal').modal('hide'))
+            .then(() => this.getNode());
+    }
+
+    showCommissioningNode() {
+        $('#commissionNodeModal').modal('show');
+    }
+
+    commissionNode() {
+        return this.api.post(`/v1/nodes/${this.nodeID}/commission`)
+            .then(() => $('#commissionNodeModal').modal('hide'))
+            .then(() => this.getNode());
+    }
+
+    showDeleteNode() {
+        $('#deleteNodeModal').modal('show');
+    }
+
+    deleteNode() {
+        return this.api.delete(`/v1/nodes/${this.nodeID}`)
+            .then(() => $('#deleteNodeModal').modal('hide'))
+            .then(() => this.$state.go('NodesController'));
+    }
+
+    showRebootNode() {
+        $('#rebootNodeModal').modal('show');
+    }
+
+    rebootNode() {
+        return this.api.post(`/v1/nodes/${this.nodeID}/reboot`)
+            .then(() => $('#rebootNodeModal').modal('hide'))
+            .then(() => this.getNode());
+    }
+
+    showShutdownNode() {
+        $('#shutdownNodeModal').modal('show');
+    }
+
+    shutdownNode() {
+        return this.api.post(`/v1/nodes/${this.nodeID}/shutdown`)
+            .then(() => $('#shutdownNodeModal').modal('hide'))
+            .then(() => this.getNode());
+    }
+
+    controlNodeChange() {
+        return this.api.post(`/v1/nodes/${this.nodeID}/set-control-node`, {
+            controlNode: this.editNode.controlNode
+        })
             .then(() => this.getNode());
     }
 }

@@ -23,6 +23,15 @@ class NodesController {
         this.nodes = [];
 
         this.getNodes();
+        this.watch();
+    }
+
+    watch() {
+        const watch = () => {
+            this.getNodes();
+        };
+        const timer = setInterval(watch, 5000);
+        this.$scope.$on('$destroy', () => clearInterval(timer));
     }
 
     getNodes() {

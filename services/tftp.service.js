@@ -123,8 +123,6 @@ module.exports = {
 
             const bootFile = await this.generateBootFile(ctx, node, kernel);
 
-            this.logger.info(`[${req.stats.remoteAddress}:${req.stats.remotePort}] (${req.file}) serving boot file...`, bootFile);
-
             await ctx.call('v1.nodes.setStatus', {
                 id: node.id,
                 status: 'booting'

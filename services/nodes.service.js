@@ -1,13 +1,11 @@
 const DbService = require("@moleculer/database").Service;
 const { MoleculerClientError } = require("moleculer").Errors;
-const { Client } = require('ssh2');
+
 const fs = require('fs').promises;
 const Moniker = require('moniker');
-const wol = require('wake_on_lan');
 const crypto = require('crypto');
-const { default: mod } = require("moleculer");
-const { networkInterfaces } = require("os");
 
+const NodeActionsMixin = require("../mixins/node.actions.mixin");
 
 module.exports = {
     name: "nodes",
@@ -19,7 +17,8 @@ module.exports = {
                 type: "NeDB",
                 options: "./db/nodes.db"
             }
-        })
+        }),
+        NodeActionsMixin
     ],
 
     settings: {
@@ -73,6 +72,7 @@ module.exports = {
                 type: "string",
                 required: false,
                 enum: [
+                    "rebooting",
                     "booting",
                     "running",
                     "pending",
@@ -116,6 +116,8 @@ module.exports = {
 
             // options
             options: { type: "object", required: false, default: {} },
+            controlNode: { type: "boolean", required: false, default: false },
+            token: { type: "string", required: false },
 
 
             id: { type: "string", primaryKey: true, columnName: "_id" /*, generated: "user"*/ },
@@ -211,17 +213,17 @@ module.exports = {
             }
         },
 
-        setState: {
+        setControlNode: {
             rest: {
                 method: "POST",
-                path: "/:id/set-state",
+                path: "/:id/set-control-node",
             },
             params: {
                 id: { type: "string", optional: false },
-                state: { type: "string", optional: false }
+                controlNode: { type: "boolean", optional: false }
             },
             async handler(ctx) {
-                const { id, state } = ctx.params;
+                const { id, controlNode } = ctx.params;
 
                 const node = await this.getNodeById(ctx, id);
                 if (!node) {
@@ -235,7 +237,48 @@ module.exports = {
 
                 return this.updateEntity(ctx, {
                     id: node.id,
-                    stage: state
+                    controlNode
+                });
+            }
+        },
+
+        controlNode: {
+            rest: {
+                method: "GET",
+                path: "/control-node",
+            },
+            async handler(ctx) {
+                return this.getNodeByControlNode(ctx);
+            }
+        },
+
+        setStage: {
+            rest: {
+                method: "POST",
+                path: "/:id/set-stage",
+            },
+            params: {
+                id: { type: "string", optional: false },
+                stage: { type: "string", optional: false }
+            },
+            async handler(ctx) {
+                const { id, stage } = ctx.params;
+
+                const node = await this.getNodeById(ctx, id);
+                if (!node) {
+                    throw new MoleculerClientError(
+                        `Node with id ${id} not found`,
+                        404,
+                        "NODE_NOT_FOUND",
+                        { id }
+                    );
+                }
+
+                this.logger.info(`Node ${node.hostname} changed stage ${node.stage}->${stage}`);
+
+                return this.updateEntity(ctx, {
+                    id: node.id,
+                    stage: stage
                 });
             }
         },
@@ -261,6 +304,7 @@ module.exports = {
                         { id }
                     );
                 }
+                this.logger.info(`Node ${node.hostname} changed status ${node.status}->${status}`);
 
                 return this.updateEntity(ctx, {
                     id: node.id,
@@ -297,6 +341,39 @@ module.exports = {
                 });
 
                 this.logger.info(`Node ${id} lease updated to ${lease} from ${node.lease}`);
+
+                return updatedNode;
+            }
+        },
+
+        setToken: {
+            rest: {
+                method: "POST",
+                path: "/:id/set-token",
+            },
+            params: {
+                id: { type: "string", optional: false },
+                token: { type: "string", optional: false }
+            },
+            async handler(ctx) {
+                const { id, token } = ctx.params;
+
+                const node = await this.getNodeById(ctx, id);
+                if (!node) {
+                    throw new MoleculerClientError(
+                        `Node with id ${id} not found`,
+                        404,
+                        "NODE_NOT_FOUND",
+                        { id }
+                    );
+                }
+
+                const updatedNode = await this.updateEntity(ctx, {
+                    id: node.id,
+                    token
+                });
+
+                this.logger.info(`Node ${id} token updated to ${token} from ${node.token}`);
 
                 return updatedNode;
             }
@@ -455,7 +532,22 @@ module.exports = {
 
                 return updatedNode;
             }
-        }
+        },
+
+
+        clearDB: {
+            rest: {
+                method: "POST",
+                path: "/clear"
+            },
+            async handler(ctx) {
+                const count = await this.countEntities(null, {});
+                if (count > 0) {
+                    await this.removeEntities(null, {});
+                }
+                return { message: `${count} nodes deleted.` };
+            },
+        },
     },
 
     events: {},
@@ -601,7 +693,11 @@ module.exports = {
             }
 
             return fs.readFile(this.settings.authorizedKeys, 'utf8');
-        }
+        },
+
+        async getNodeByControlNode(ctx) {
+            return this.findEntity(ctx, { query: { controlNode: true } });
+        },
     },
 
     created() {

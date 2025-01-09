@@ -1,4 +1,4 @@
-<h1 class="text-center">DHCP Server Settings</h1>
+<h1 class="text-center">Nodes {{$ctrl.nodes.length}}</h1>
 
 <div class="container-fluid">
 
@@ -13,7 +13,7 @@
                             <tr>
                                 <th scope="col">Hostname</th>
                                 <th scope="col">IP Address</th>
-                                <th scope="col">State</th>
+                                <th scope="col">Stage</th>
                                 <th scope="col">Status</th>
                                 <th scope="col">Actions</th>
                             </tr>
@@ -22,7 +22,7 @@
                             <tr ng-repeat="node in $ctrl.nodes track by node.id">
                                 <th scope="row">{{ node.hostname }}</th>
                                 <td>{{ node.ip }}</td>
-                                <td>{{ node.state }}</td>
+                                <td>{{ node.stage }}</td>
                                 <td>{{ node.status }}</td>
                                 <td>
                                     <button type="button" class="btn btn-primary"

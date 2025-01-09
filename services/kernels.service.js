@@ -106,7 +106,7 @@ module.exports = {
                 initramfs: "k3os/v0.21.5-k3s2r1/k3os-initramfs-amd64",
                 k3os: {
                     silent: true,
-                    poweroff: true,
+                    poweroff: false,
                     mode: "install",
                     config_url: "k3os/config",
                     iso_url: "k3os/v0.21.5-k3s2r1/k3os-amd64.iso"
@@ -163,7 +163,6 @@ module.exports = {
                     );
                 }
 
-
                 const bootFile = await this.generateBootFile(ctx, node, kernel);
                 return bootFile;
             }
@@ -213,20 +212,24 @@ module.exports = {
                     bootFile.push('echo apkovl is ${apkovl}');
                     kernelCMD.push('apkovl=${apkovl}');
                 }
-                
+
                 bootFile.push('set ssh_keys http://${next-server}/ssh_keys');
                 bootFile.push('echo ssh_keys is ${ssh_keys}');
                 kernelCMD.push('ssh_keys=${ssh_keys}');
             } else if (kernel.name == 'k3os') {
                 const k3os = kernel.k3os;
                 const installParams = [];
+                const lease = await ctx.call('v1.dhcp.lookup', { ip: node.ip });
 
+                bootFile.push('imgfree');
+
+                installParams.push(`k3os.mode=${k3os.mode}`);
+                installParams.push(`k3os.install.debug=true`);
                 installParams.push(`k3os.install.silent=${k3os.silent}`);
-                //installParams.push(`k3os.install.poweroff=${k3os.poweroff}`);
-                installParams.push(`k3os.install.mode=${k3os.mode}`);
-                installParams.push('k3os.install.config_url=http://${next-server}/' + k3os.config_url);
+                installParams.push(`k3os.install.power_off=${k3os.poweroff}`);
+                installParams.push(`k3os.install.config_url=http://${lease.nextServer}/${k3os.config_url}`);
                 installParams.push(`k3os.install.device=${node.options.installDisk}`);
-                installParams.push('k3os.install.iso_url=http://${next-server}/' + k3os.iso_url);
+                installParams.push(`k3os.install.iso_url=http://${lease.nextServer}/${k3os.iso_url}`);
 
                 kernelCMD.push(installParams.join(' '));
             }
