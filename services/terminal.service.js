@@ -2,56 +2,28 @@ const DbService = require("@moleculer/database").Service;
 const { MoleculerClientError } = require("moleculer").Errors;
 
 const fs = require('fs').promises;
-const { readFile } = require("fs");
 const ssh = require("ssh2");
-
+const pty = require('node-pty');
+const ws = require('ws');
 
 module.exports = {
-    name: "ssh",
+    name: "terminal",
     version: 1,
 
     mixins: [
-        DbService({
-            adapter: {
-                type: "NeDB",
-                options: "./db/ssh.db"
-            }
-        })
+
     ],
 
     settings: {
-        fields: {
-
-            id: { type: "string", primaryKey: true, columnName: "_id" /*, generated: "user"*/ },
-            createdAt: {
-                type: "number",
-                readonly: true,
-                onCreate: () => Date.now(),
-                columnType: "double"
-            },
-            updatedAt: {
-                type: "number",
-                readonly: true,
-                onUpdate: () => Date.now(),
-                columnType: "double"
-            },
-            deletedAt: { type: "number", readonly: true, onRemove: () => Date.now() }
-        },
-
-        scopes: {
-            notDeleted: {
-                deletedAt: { $exists: false }
-            },
-        },
-
-        // Configure the scope as default scope
-        defaultScopes: ["notDeleted"],
 
         ssh: {
             privateKey: "/root/.ssh/id_ecdsa",
             user: "root"
-        }
+        },
 
+        ws: {
+            port: 8082
+        }
     },
 
     actions: {
@@ -133,7 +105,7 @@ module.exports = {
                 }
 
                 const client = await this.createClient(node, kernel);
-                
+
                 return new Promise((resolve, reject) => {
                     client.sftp((err, sftp) => {
                         if (err) {
@@ -211,19 +183,113 @@ module.exports = {
                 await client.end();
             }
             this.clients.clear();
+
+            this.logger.info('All SSH clients closed');
         },
 
+        async createServer() {
+            const port = this.settings.ws.port || 8082;
+
+            this.server = new ws.WebSocketServer({ port });
+
+            this.attachEvents(this.server);
+
+            this.logger.info('WebSocket Server created');
+        },
+
+        attachEvents(server) {
+            server.on('listening', () => {
+                const address = server.address;
+                this.logger.info(`WebSocket Server listening on ${address.address}:${address.port}`);
+            });
+
+            server.on('connection', (ws, request) => {
+
+                if (request.url.startsWith('/node')) {
+                    const nodeID = request.url.split('/')[2];
+                    this.startWsShell(ws, nodeID);
+                } else {
+                    ws.close();
+                }
+            });
+        },
+
+        async closeServer() {
+            if (this.server) {
+                await this.server.close();
+            }
+        },
+
+        async startWsShell(ws, nodeID) {
+            const node = await this.call('v1.nodes.resolve', { id: nodeID });
+            if (!node) {
+                ws.close();
+                return;
+            }
+            const kernel = await this.call('v1.kernels.resolve', { id: node.kernel });
+            if (!kernel) {
+                ws.close();
+                return;
+            }
+            const client = await this.createClient(node, kernel);
+
+            client.shell((err, stream) => {
+                if (err) {
+                    this.logger.error(`SSH Client error: ${err.message}`);
+                    this.clients.delete(node.id);
+                    client.end();
+                    ws.close();
+                    return;
+                }
+                this.logger.info(`SSH Client connected to ${node.ip}:22`);
+
+                ws.on('message', (message) => {
+                    stream.write(message);
+                });
+
+                stream.on('data', (data) => {
+                    ws.send(data);
+                });
+
+                stream.on('close', () => {
+                    this.clients.delete(node.id);
+                    client.end();
+                    ws.close();
+                });
+
+                stream.on('error', (err) => {
+                    this.clients.delete(node.id);
+                    client.end();
+                    ws.close();
+                });
+
+                ws.on('close', () => {
+                    this.clients.delete(node.id);
+                    client.end();
+                    ws.close();
+                });
+
+                ws.on('error', (err) => {
+                    this.clients.delete(node.id);
+                    client.end();
+                    ws.close();
+                });
+            });
+        },
     },
 
     created() {
         this.clients = new Map();
+        this.pty = null;
     },
 
     async started() {
         //await this.readSshKeys();
+        await this.createServer();
     },
 
     async stopped() {
         await this.closeAll();
+        await this.closeServer();
     }
 }

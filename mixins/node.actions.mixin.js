@@ -24,7 +24,7 @@ module.exports = {
                     );
                 }
 
-                return ctx.call('v1.ssh.exec', { node: id, command: 'reboot' })
+                return ctx.call('v1.ssh.exec', { node: id, command: 'sudo reboot' })
                     .then(() => {
                         return this.updateEntity(ctx, {
                             id: node.id,

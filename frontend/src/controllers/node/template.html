@@ -1,4 +1,4 @@
-<div class="btn-group float-right">
+<div class="btn-group dropleft float-right">
     <button type="button" class="btn btn-secondary" ng-click="$ctrl.showEditNode()">Edit</button>
     <button type="button" class="btn btn-secondary dropdown-toggle dropdown-toggle-split" data-toggle="dropdown" aria-expanded="false" data-reference="parent">
       <span class="sr-only">Toggle Dropdown</span>
@@ -9,6 +9,7 @@
       <div class="dropdown-divider"></div>
       <button type="button" class="dropdown-item" ng-click="$ctrl.showCommissioningNode()">Commission Node</button>
       <button type="button" class="dropdown-item" ng-click="$ctrl.showLogsNode()">Logs</button>
+      <button type="button" class="dropdown-item" ui-sref="TerminalController({id: $ctrl.node.id})">Terminal</button>
     </div>
   </div>
 <h1 class="text-center">

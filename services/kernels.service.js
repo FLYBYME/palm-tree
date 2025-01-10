@@ -36,6 +36,7 @@ module.exports = {
             // vmlinuz, initramfs, modloop, repo, archive
             vmlinuz: { type: "string", required: true },
             initramfs: { type: "string", required: true },
+            rootfs: { type: "string", required: false },
             modloop: { type: "string", required: false },
             iso: { type: "string", required: false },
             repo: { type: "string", required: false },
@@ -44,19 +45,10 @@ module.exports = {
 
             cmdline: { type: "string", required: false },
 
-            k3os: {
-                silent: { type: "boolean", required: false, default: false },
-                poweroff: { type: "boolean", required: false, default: false },
-                mode: {
-                    type: "string",
-                    enum: [
-                        "install",
-                        "multi",
-                    ],
-                    required: false,
-                    default: "install"
-                },
-                iso_url: { type: "string", required: false, default: null },
+            options:{
+                type: "object",
+                required: false,
+                default: {}
             },
 
             id: { type: "string", primaryKey: true, columnName: "_id" /*, generated: "user"*/ },
@@ -111,7 +103,11 @@ module.exports = {
                     config_url: "k3os/config",
                     iso_url: "k3os/v0.21.5-k3s2r1/k3os-amd64.iso"
                 }
-            }
+            },
+        },
+
+        config: {
+            'kernels.debug': true
         }
     },
 
@@ -187,6 +183,13 @@ module.exports = {
             bootFile.push('set initramfs http://${next-server}/' + kernel.initramfs);
             bootFile.push('echo initramfs is ${initramfs}');
 
+            if (this.settings['kernels.debug']) {
+                bootFile.push('ifstat');
+                bootFile.push('route');
+                bootFile.push('ipstat');
+                bootFile.push('sleep 10');
+            }
+
             const kernelCMD = [
                 '${vmlinuz}',
             ];
@@ -216,20 +219,30 @@ module.exports = {
                 bootFile.push('set ssh_keys http://${next-server}/ssh_keys');
                 bootFile.push('echo ssh_keys is ${ssh_keys}');
                 kernelCMD.push('ssh_keys=${ssh_keys}');
+
             } else if (kernel.name == 'k3os') {
-                const k3os = kernel.k3os;
                 const installParams = [];
                 const lease = await ctx.call('v1.dhcp.lookup', { ip: node.ip });
 
                 bootFile.push('imgfree');
 
-                installParams.push(`k3os.mode=${k3os.mode}`);
+                installParams.push(`k3os.mode=${kernel.options.mode}`);
                 installParams.push(`k3os.install.debug=true`);
-                installParams.push(`k3os.install.silent=${k3os.silent}`);
-                installParams.push(`k3os.install.power_off=${k3os.poweroff}`);
-                installParams.push(`k3os.install.config_url=http://${lease.nextServer}/${k3os.config_url}`);
+                installParams.push(`k3os.install.silent=${kernel.options.silent}`);
+                installParams.push(`k3os.install.power_off=${kernel.options.poweroff}`);
+                installParams.push(`k3os.install.config_url=http://${lease.nextServer}${kernel.options.config_url}`);
                 installParams.push(`k3os.install.device=${node.options.installDisk}`);
-                installParams.push(`k3os.install.iso_url=http://${lease.nextServer}/${k3os.iso_url}`);
+                installParams.push(`k3os.install.iso_url=http://${lease.nextServer}/${kernel.iso}`);
+
+                kernelCMD.push(installParams.join(' '));
+            } else if(kernel.name == 'coreos') {
+                const installParams = [];
+                const lease = await ctx.call('v1.dhcp.lookup', { ip: node.ip });
+
+                installParams.push(`coreos.live.rootfs_url=http://${lease.nextServer}/${kernel.rootfs}`);
+                installParams.push(`ignition.firstboot`);
+                installParams.push(`ignition.platform.id=metal`);
+                installParams.push(`ignition.config.url=http://${lease.nextServer}${kernel.options.config_url}`);
 
                 kernelCMD.push(installParams.join(' '));
             }

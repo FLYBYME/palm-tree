@@ -1,0 +1,244 @@
+<div class="btn-group dropleft float-right">
+    <button type="button" class="btn btn-secondary" ng-click="$ctrl.showCreateKernel()">Create</button>
+</div>
+
+<h1 class="text-center my-4">Netboot Kernels</h1>
+
+<div class="row">
+    <div class="col-lg-4 col-md-6 col-sm-12" ng-repeat="kernel in $ctrl.kernels track by kernel.id">
+        <div class="card">
+            <div class="card-header">
+                <button type="button" class="btn btn-secondary float-right" ng-click="$ctrl.showEditKernel(kernel)">Edit</button>
+                {{ kernel.name }}
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+                    <div class="list-group-item">Version: <strong>{{ kernel.version }}</strong></div>
+                    <div class="list-group-item">vmlinuz: <strong>{{ kernel.vmlinuz }}</strong></div>
+                    <div class="list-group-item">Initramfs: <strong>{{ kernel.initramfs }}</strong></div>
+                    <div class="list-group-item" ng-hide="!kernel.modloop">Modloop: <strong>{{ kernel.modloop }}</strong></div>
+                    <div class="list-group-item" ng-hide="!kernel.rootfs">Rootfs: <strong>{{ kernel.rootfs }}</strong></div>
+                    <div class="list-group-item" ng-hide="!kernel.repo">Repo: <strong>{{ kernel.repo }}</strong></div>
+                    <div class="list-group-item" ng-hide="!kernel.archive">Archive: <strong>{{ kernel.archive }}</strong></div>
+                    <div class="list-group-item" ng-hide="!kernel.iso">ISO: <strong>{{ kernel.iso }}</strong></div>
+                    <div class="list-group-item">CMD Line: <strong>{{ kernel.cmdline }}</strong></div>
+                    <div class="list-group-item">
+                        <h3>Options</h3>
+                        <ul class="list-group">
+                            <li class="list-group-item" ng-repeat="(key, value) in kernel.options">
+                                {{ key }}: {{ value }}
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="deleteKernelModal" tabindex="-1" role="dialog" aria-labelledby="deleteKernelModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteKernelModalLabel">Delete Kernel</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete {{ $ctrl.deleteKernel.name }}?</p>            
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" ng-click="$ctrl.deleteKernel()">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- edit modal -->
+<div class="modal fade" id="formKernelModal" tabindex="-1" role="dialog" aria-labelledby="formKernelModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="formKernelModalLabel">Edit Kernel</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="kernelName">Kernel Name</label>
+                    <input type="text" class="form-control" id="kernelName" ng-model="$ctrl.formKernel.name" required>
+                </div>
+                <div class="form-group">
+                    <label for="kernelVersion">Kernel Version</label>
+                    <input type="text" class="form-control" id="kernelVersion" ng-model="$ctrl.formKernel.version"
+                        required>
+                </div>
+                <div class="form-group">
+                    <label for="kernelArch">Architecture</label>
+                    <select class="form-control" id="kernelArch" ng-model="$ctrl.formKernel.arch" required>
+                        <option value="x86_64">x86_64</option>
+                        <option value="aarch64">aarch64</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="kernelVmlinuz">vmlinuz</label>
+                    <input type="text" class="form-control" id="kernelVmlinuz" ng-model="$ctrl.formKernel.vmlinuz"
+                        required>
+                </div>
+                <div class="form-group">
+                    <label for="kernelInitramfs">initramfs</label>
+                    <input type="text" class="form-control" id="kernelInitramfs" ng-model="$ctrl.formKernel.initramfs"
+                        required>
+                </div>
+                <div class="form-group">
+                    <label for="kernelRootfs">rootfs</label>
+                    <input type="text" class="form-control" id="kernelRootfs" ng-model="$ctrl.formKernel.rootfs">
+                </div>
+                <div class="form-group">
+                    <label for="kernelModloop">modloop</label>
+                    <input type="text" class="form-control" id="kernelModloop" ng-model="$ctrl.formKernel.modloop">
+                </div>
+                <div class="form-group">
+                    <label for="kernelIso">ISO</label>
+                    <input type="text" class="form-control" id="kernelIso" ng-model="$ctrl.formKernel.iso">
+                </div>
+                <div class="form-group">
+                    <label for="kernelRepo">Repo</label>
+                    <input type="text" class="form-control" id="kernelRepo" ng-model="$ctrl.formKernel.repo">
+                </div>
+                <div class="form-group">
+                    <label for="kernelArchive">Archive</label>
+                    <input type="text" class="form-control" id="kernelArchive" ng-model="$ctrl.formKernel.archive">
+                </div>
+                <div class="form-group">
+                    <label for="kernelApkovl">apkovl</label>
+                    <input type="text" class="form-control" id="kernelApkovl" ng-model="$ctrl.formKernel.apkovl">
+                </div>
+                <div class="form-group">
+                    <label for="kernelCmdline">CMD Line</label>
+                    <input type="text" class="form-control" id="kernelCmdline" ng-model="$ctrl.formKernel.cmdline">
+                </div>
+                <div class="form-group">
+                    <label for="kernelOptions">Options</label>
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" id="kernelOptionsKey" ng-model="$ctrl.formKernel.optionsKey"
+                            placeholder="Key" aria-label="Key" aria-describedby="button-addon2">
+                        <input type="text" class="form-control" id="kernelOptionsValue" ng-model="$ctrl.formKernel.optionsValue"
+                            placeholder="Value" aria-label="Value" aria-describedby="button-addon2">
+                        <div class="input-group-append">
+                            <button class="btn btn-outline-secondary" type="button" id="button-addon2"
+                                ng-click="$ctrl.addKernelOption()">Add</button>
+                        </div>
+                    </div>
+                    <ul class="list-group">
+                        <li class="list-group-item" ng-repeat="(key, value) in $ctrl.formKernel.options">
+                            {{ key }}: {{ value }} <button class="btn btn-link" ng-click="$ctrl.removeKernelOption(key)">Remove</button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" ng-click="$ctrl.updateKernel()">Save changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="modal fade" id="createKernelModal" tabindex="-1" role="dialog" aria-labelledby="createKernelModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createKernelModalLabel">Create Kernel</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="kernelName">Kernel Name</label>
+                    <input type="text" class="form-control" id="kernelName" ng-model="$ctrl.formKernel.name" required>
+                </div>
+                <div class="form-group">
+                    <label for="kernelVersion">Kernel Version</label>
+                    <input type="text" class="form-control" id="kernelVersion" ng-model="$ctrl.formKernel.version"
+                        required>
+                </div>
+                <div class="form-group">
+                    <label for="kernelArch">Architecture</label>
+                    <select class="form-control" id="kernelArch" ng-model="$ctrl.formKernel.arch" required>
+                        <option value="x86_64">x86_64</option>
+                        <option value="aarch64">aarch64</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="kernelVmlinuz">vmlinuz</label>
+                    <input type="text" class="form-control" id="kernelVmlinuz" ng-model="$ctrl.formKernel.vmlinuz"
+                        required>
+                </div>
+                <div class="form-group">
+                    <label for="kernelInitramfs">initramfs</label>
+                    <input type="text" class="form-control" id="kernelInitramfs" ng-model="$ctrl.formKernel.initramfs"
+                        required>
+                </div>
+                <div class="form-group">
+                    <label for="kernelRootfs">Rootfs</label>
+                    <input type="text" class="form-control" id="kernelRootfs" ng-model="$ctrl.formKernel.rootfs">
+                </div>
+                <div class="form-group">
+                    <label for="kernelModloop">modloop</label>
+                    <input type="text" class="form-control" id="kernelModloop" ng-model="$ctrl.formKernel.modloop">
+                </div>
+                <div class="form-group">
+                    <label for="kernelIso">ISO</label>
+                    <input type="text" class="form-control" id="kernelIso" ng-model="$ctrl.formKernel.iso">
+                </div>
+                <div class="form-group">
+                    <label for="kernelRepo">Repo</label>
+                    <input type="text" class="form-control" id="kernelRepo" ng-model="$ctrl.formKernel.repo">
+                </div>
+                <div class="form-group">
+                    <label for="kernelArchive">Archive</label>
+                    <input type="text" class="form-control" id="kernelArchive" ng-model="$ctrl.formKernel.archive">
+                </div>
+                <div class="form-group">
+                    <label for="kernelApkovl">apkovl</label>
+                    <input type="text" class="form-control" id="kernelApkovl" ng-model="$ctrl.formKernel.apkovl">
+                </div>
+                <div class="form-group">
+                    <label for="kernelCmdline">CMD Line</label>
+                    <input type="text" class="form-control" id="kernelCmdline" ng-model="$ctrl.formKernel.cmdline">
+                </div>
+                <div class="form-group">
+                    <label for="kernelOptions">Options</label>
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" id="kernelOptionsKey" ng-model="$ctrl.formKernel.optionsKey"
+                            placeholder="Key" aria-label="Key" aria-describedby="button-addon2">
+                        <input type="text" class="form-control" id="kernelOptionsValue" ng-model="$ctrl.formKernel.optionsValue"
+                            placeholder="Value" aria-label="Value" aria-describedby="button-addon2">
+                        <div class="input-group-append">
+                            <button class="btn btn-outline-secondary" type="button" id="button-addon2"
+                                ng-click="$ctrl.addKernelOption()">Add</button>
+                        </div>
+                    </div>
+                    <ul class="list-group">
+                        <li class="list-group-item" ng-repeat="(key, value) in $ctrl.formKernel.options">
+                            {{ key }}: {{ value }} <button class="btn btn-link" ng-click="$ctrl.removeKernelOption(key)">Remove</button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" ng-click="$ctrl.createKernel()">Create</button>
+            </div>
+        </div>
+    </div>
+</div>

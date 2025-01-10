@@ -3,6 +3,7 @@ const { MoleculerClientError } = require("moleculer").Errors;
 const Context = require("moleculer").Context;
 
 const http = require('http');
+const https = require('https');
 const fs = require('fs').promises;
 const path = require('path');
 const mime = require('mime');
@@ -37,7 +38,60 @@ module.exports = {
     },
 
     actions: {
+        downloadFile: {
+            rest: {
+                method: "POST",
+                path: "/downloader",
+            },
+            params: {
+                url: { type: "string", optional: false },
+                path: { type: "string", optional: false },
+                kernel: { type: "string", optional: false },
+            },
+            async handler(ctx) {
+                const url = ctx.params.url;
+                const root = this.settings.http.root;
+                const localPath = ctx.params.path;
+                const kernelName = ctx.params.kernel;
 
+                const filePath = path.resolve(`${root}/${localPath}`);
+
+                const kernel = await ctx.call('v1.kernels.lookup', { name: kernelName });
+                if (!kernel) {
+                    throw new MoleculerClientError(
+                        `Kernel name ${kernelName} not found`,
+                        404,
+                        "KERNEL_NOT_FOUND",
+                        { id: kernelName }
+                    );
+                }
+                // create cache entry
+                const cache = await this.createCacheEntry(ctx, localPath, kernel);
+
+                await this.downloadFile(ctx, url, filePath, cache);
+
+                return cache;
+            }
+        },
+
+        cache: {
+            rest: {
+                method: "GET",
+                path: "/cache",
+            },
+            async handler(ctx) {
+                const result = [];
+
+                for (const [key, cache] of this.cache) {
+                    // remove requests from cache
+                    const json = JSON.parse(JSON.stringify(cache));
+                    json.requests = cache.requests.length;
+                    result.push(json);
+                }
+
+                return result;
+            }
+        }
     },
 
     events: {},
@@ -72,6 +126,8 @@ module.exports = {
             const ctx = new Context(this.broker);
             if (req.url == '/k3os/config') {
                 await this.handleK3OSConfig(ctx, req, res);
+            } else if (req.url == '/coreos/ignition') {
+                await this.handleIgnitionConfig(ctx, req, res);
             } else if (req.url == '/ssh_keys') {
                 await this.handleSSHKeys(ctx, req, res);
             } else if (req.url == '/apkovl') {
@@ -79,6 +135,34 @@ module.exports = {
             } else {
                 await this.handleMirror(ctx, req, res);
             }
+        },
+
+        async handleIgnitionConfig(ctx, req, res) {
+            const ip = req.socket.remoteAddress.replace(/^.*:/, '');
+
+            this.logger.info(`${ip} requesting ignition config`);
+
+            const node = await ctx.call('v1.nodes.lookup', { ip });
+            if (!node) {
+                return this.sendError(req, res, 404, `Node with ip ${ip} not found`);
+            }
+
+            const kernel = await ctx.call('v1.kernels.resolve', { id: node.kernel });
+            if (!kernel) {
+                return this.sendError(req, res, 404, `Kernel name ${node.kernel} not found`);
+            }
+
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({
+                "ignition": { "version": "3.0.0" },
+                "systemd": {
+                    "units": [{
+                        "name": "example.service",
+                        "enabled": true,
+                        "contents": "[Service]\nType=oneshot\nExecStart=/usr/bin/echo Hello World\n\n[Install]\nWantedBy=multi-user.target"
+                    }]
+                }
+            }));
         },
 
         async handleApkOvlUpload(ctx, req, res) {
@@ -149,7 +233,6 @@ module.exports = {
          * serve static files from public folder
          */
         async serveStatic(ctx, cache) {
-
             if (cache.isDownloaded) {
                 while (cache.requests.length > 0) {
                     const request = cache.requests.shift();
@@ -205,6 +288,7 @@ module.exports = {
             }
 
             this.logger.info(`Cache entry hit for ${req.url}`);
+
             return cache;
         },
 
@@ -240,7 +324,7 @@ module.exports = {
         },
 
         async downloadFile(ctx, url, filePath, cache) {
-            return http.get(url, async (response) => {
+            return (url.startsWith('http://') ? http : https).get(url, async (response) => {
                 if (response.statusCode < 200 || response.statusCode > 299) {
                     this.logger.error(`Error downloading file ${url} to ${filePath}`);
                     return this.sendError(ctx, null, 404, `Error downloading file ${url} to ${filePath}`);
@@ -252,6 +336,9 @@ module.exports = {
                 }
                 cache.lastModified = new Date(response.headers['last-modified']);
                 cache.lastAccessed = Date.now();
+
+                // create directory
+                await fs.mkdir(path.dirname(filePath), { recursive: true });
 
                 const fileStream = createWriteStream(filePath);
 
@@ -285,11 +372,7 @@ module.exports = {
                 }
 
                 return this.serveStatic(ctx, cache);
-
-            })
-
-
-
+            });
         },
 
         async createCacheEntry(ctx, url, kernel) {

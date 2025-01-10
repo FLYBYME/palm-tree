@@ -93,7 +93,7 @@ module.exports = {
             port: 67, // DHCP server port
             serverAddress: "10.1.10.1", // DHCP server IP address
             gateways: ["10.1.10.1"],
-            dns: ["10.1.10.1"],
+            dns: ["1.1.1.1"],
             range: [10, 99],
 
             // pxe
@@ -178,14 +178,15 @@ module.exports = {
 
             this.attachEvents(server);
 
-            server.bind('0.0.0.0');
+            server.bind();
 
             this.logger.info('DHCP Server created');
         },
 
         attachEvents(server) {
             server.on('listening', () => {
-                this.logger.info('DHCP Server started');
+                const address = server.address;
+                this.logger.info(`DHCP Server listening on ${address.address}:${address.port}`);
             });
             server.on('discover', (event) => {
                 const ctx = new Context(this.broker);
@@ -306,11 +307,20 @@ module.exports = {
         },
 
 
+        /**
+         * Handle DHCP discover request
+         * @param {Context} ctx - moleculer context
+         * @param {object} event - DHCP event
+         * @param {dhcp.Packet} event.packet - DHCP packet
+         * @returns {Promise<dhcp.Packet>} - DHCP offer packet
+         */
         async handleDiscover(ctx, event) {
             const pkt = event.packet;
 
+            // get lease by mac address
             let lease = await this.getByMac(ctx, pkt.chaddr);
             if (!lease) {
+                // if no lease, create a new one
                 lease = await this.createNewLease(ctx, pkt.chaddr);
             }
 
@@ -319,6 +329,7 @@ module.exports = {
                 return;
             }
 
+            // resolve node by id
             const node = await ctx.call('v1.nodes.resolve', { id: lease.node });
             if (!node) {
                 this.logger.info(`DHCP Server no available node for ${pkt.chaddr}`);
@@ -334,22 +345,35 @@ module.exports = {
             offer.giaddr = this.settings.dhcp.serverAddress;// gateway address
             offer.yiaddr = lease.ip;
 
-            offer.options.push(new dhcp.DHCPMessageTypeOption(dhcp.DHCPMessageType.offer));// #53
-            offer.options.push(new dhcp.SubnetMaskOption('255.255.255.0'));// #1
+            // set DHCP message type option (53)
+            offer.options.push(new dhcp.DHCPMessageTypeOption(dhcp.DHCPMessageType.offer));
 
-            offer.options.push(new dhcp.GatewaysOption([lease.nextServer]));// #3
+            // set subnet mask option (1)
+            offer.options.push(new dhcp.SubnetMaskOption('255.255.255.0'));
 
+            // set gateway options (3)
+            offer.options.push(new dhcp.GatewaysOption([lease.nextServer]));
 
-            offer.options.push(new dhcp.DomainServerOption(['1.1.1.1']));// #6
+            // set domain server option (6)
+            offer.options.push(new dhcp.DomainServerOption(['1.1.1.1']));
 
-            offer.options.push(new dhcp.BroadcastAddressOption('255.255.255.255'));// #28
-            offer.options.push(new dhcp.AddressTimeOption('23.186.168.1'));// #51
-            offer.options.push(new dhcp.DHCPServerIdOption(this.server.serverId));// #54
+            // set hostname option (12)
+            offer.options.push(new dhcp.HostnameOption(node.hostname));
+
+            // set broadcast address option (28)
+            offer.options.push(new dhcp.BroadcastAddressOption('10.1.10.255'));
+
+            // set address time option (51)
+            offer.options.push(new dhcp.AddressTimeOption('23.186.168.1'));
+
+            // set DHCP server ID option (54)
+            offer.options.push(new dhcp.DHCPServerIdOption(this.server.serverId));
+
+            // if node is not provisioned, set TFTP server and boot file options (66, 67)
             if (node.stage !== "provisioned") {
-                offer.options.push(new dhcp.TftpServerOption(lease.tftpServer));// #66
-                offer.options.push(new dhcp.BootFileOption(lease.bootFile));// #67
+                offer.options.push(new dhcp.TftpServerOption(lease.tftpServer));
+                offer.options.push(new dhcp.BootFileOption(lease.bootFile));
             }
-            offer.options.push(new dhcp.HostnameOption(node.hostname));// #12
 
             this.server.send(offer);
 

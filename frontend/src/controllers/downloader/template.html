@@ -1,0 +1,42 @@
+
+<h1 class="text-center">
+    Downloader
+</h1>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col">
+            <div class="card">
+                <div class="card-header">Downloader</div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col">
+                            <div class="form-group">
+                                <label for="url">URL</label>
+                                <input type="text" class="form-control" id="url" ng-model="$ctrl.url">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col">
+                            <div class="form-group">
+                                <label for="kernel">Kernel</label>
+                                <select class="form-control" id="kernel" ng-model="$ctrl.kernel">
+                                    <option ng-repeat="kernel in $ctrl.kernels" value="{{ kernel.name }}">{{ kernel.name }}</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="form-group">
+                                <label for="path">Path</label>
+                                <input type="text" class="form-control" id="path" ng-model="$ctrl.path">
+                            </div>
+                        </div>
+                    </div>
+            </div>
+            <div class="card-footer">
+                <button type="button" class="btn btn-primary" ng-click="$ctrl.download()">Download</button>
+            </div>
+        </div>
+    </div>
+</div>

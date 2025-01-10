@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@network-utils/dhcp": "^1.0.10",
+    "dhcp": "^0.2.20",
     "dhcp2": "github:lsongdev/node-dhcp",
     "dhcpjs": "^1.0.0",
     "finalhandler": "^1.2.0",

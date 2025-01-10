@@ -20,7 +20,35 @@ class HomeController {
     constructor($scope, api) {
         this.$scope = $scope;
         this.api = api;
-        
+        this.nodeCount = 0;
+        this.leaseCount = 0;
+        this.kernelCount = 0;
+
+        Promise.all([this.getNodes(), this.getDhcp(), this.getKernels()]);
+    }
+
+    getNodes() {
+        return this.api.get('/v1/nodes/count')
+            .then(nodes => {
+                this.nodeCount = nodes;
+                this.$scope.$apply();
+            });
+    }
+
+    getDhcp() {
+        return this.api.get('/v1/dhcp/count')
+            .then(dhcp => {
+                this.leaseCount = dhcp;
+                this.$scope.$apply();
+            });
+    }
+
+    getKernels() {
+        return this.api.get('/v1/kernels/count')
+            .then(kernels => {
+                this.kernelCount = kernels;
+                this.$scope.$apply();
+            })
     }
 }
 
