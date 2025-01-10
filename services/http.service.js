@@ -477,8 +477,6 @@ module.exports = {
                 k3sArgs.push('agent');
             }
 
-            console.log(config);
-
             // Respond with the YAML configuration
             res.end(yaml.stringify(config));
 
