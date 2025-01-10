@@ -11,6 +11,8 @@ const Lock = require("../lib/lock");
 
 const dhcp = require("@network-utils/dhcp");
 
+const ConfigMixin = require("../mixins/config.mixin");
+
 
 
 /** 
@@ -26,7 +28,8 @@ module.exports = {
                 type: "NeDB",
                 options: "./db/dhcp.db"
             }
-        })
+        }),
+        ConfigMixin
     ],
 
     /**
@@ -89,18 +92,18 @@ module.exports = {
         defaultScopes: ["notDeleted"],
 
         // DHCP settings
-        dhcp: {
-            port: 67, // DHCP server port
-            serverAddress: "10.1.10.1", // DHCP server IP address
-            gateways: ["10.1.10.1"],
-            dns: ["1.1.1.1"],
-            range: [10, 99],
+        config: {
+            'dhcp.port': 67, // DHCP server port
+            'dhcp.serverAddress': "10.1.10.1", // DHCP server IP address
+            'dhcp.gateways': ["10.1.10.1"],
+            'dhcp.dns': ["1.1.1.1"],
+            'dhcp.range': [10, 99],
 
             // pxe
-            nextServer: "10.1.10.1",
-            tftpServer: "10.1.10.1",
-            bootFile: "/ipxe.efi",
-            leaseTime: 3600
+            'dhcp.nextServer': "10.1.10.1",
+            'dhcp.tftpServer': "10.1.10.1",
+            'dhcp.bootFile': "/ipxe.efi",
+            'dhcp.leaseTime': 3600
         },
     },
 
@@ -164,9 +167,9 @@ module.exports = {
     methods: {
 
         async createServer() {
-            const serverAddress = this.settings.dhcp.serverAddress || '0.0.0.0';
-            const gateways = this.settings.dhcp.gateways || ['0.0.0.0'];
-            const dns = this.settings.dhcp.dns || ['0.0.0.0'];
+            const serverAddress = await this.config.get('dhcp.serverAddress') || '0.0.0.0';
+            const gateways = await this.config.get('dhcp.gateways') || ['0.0.0.0'];
+            const dns = await this.config.get('dhcp.dns') || ['0.0.0.0'];
 
             const server = new dhcp.Server({
                 serverId: serverAddress,
@@ -232,9 +235,10 @@ module.exports = {
         },
 
         async createNewLease(ctx, mac) {
-            const lowerRange = this.settings.dhcp.range[0];
-            const upperRange = this.settings.dhcp.range[1];
-            const addressSplit = this.settings.dhcp.serverAddress.split('.');
+            const range = await this.config.get('dhcp.range');
+            const lowerRange = range[0];
+            const upperRange = range[1];
+            const addressSplit = (await this.config.get('dhcp.serverAddress')).split('.');
             await this.lock.acquire('dhcp');
             for (let i = lowerRange; i <= upperRange; i++) {
                 const ip = `${addressSplit[0]}.${addressSplit[1]}.${addressSplit[2]}.${i}`;
@@ -253,10 +257,10 @@ module.exports = {
                         ip,
                         mac,
                         node: node.id,
-                        nextServer: this.settings.dhcp.nextServer,
-                        tftpServer: this.settings.dhcp.tftpServer,
-                        bootFile: this.settings.dhcp.bootFile,
-                        leaseTime: this.settings.dhcp.leaseTime,
+                        nextServer: await this.config.get('dhcp.serverAddress'),
+                        tftpServer: await this.config.get('dhcp.tftpServer'),
+                        bootFile: await this.config.get('dhcp.bootFile'),
+                        leaseTime: await this.config.get('dhcp.leaseTime'),
                     }).then(async (entity) => {
                         await this.lock.release('dhcp');
                         return entity;
@@ -341,8 +345,8 @@ module.exports = {
             offer.xid = pkt.xid;// transaction id
             offer.flags = pkt.flags;// flags 
             offer.chaddr = pkt.chaddr;// client mac address
-            offer.siaddr = this.settings.dhcp.serverAddress;// server address
-            offer.giaddr = this.settings.dhcp.serverAddress;// gateway address
+            offer.siaddr = lease.nextServer;// server ip
+            offer.giaddr = lease.nextServer;// gateway address
             offer.yiaddr = lease.ip;
 
             // set DHCP message type option (53)
