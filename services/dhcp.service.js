@@ -150,7 +150,7 @@ module.exports = {
      * Events
      */
     events: {
-        async "nodes.remove"(ctx) {
+        async "nodes.removed"(ctx) {
             const node = ctx.params.data;
             const found = await this.findEntity(ctx, { query: { node: node.id } });
             if (found) {
@@ -167,9 +167,9 @@ module.exports = {
     methods: {
 
         async createServer() {
-            const serverAddress = await this.config.get('dhcp.serverAddress') || '0.0.0.0';
-            const gateways = await this.config.get('dhcp.gateways') || ['0.0.0.0'];
-            const dns = await this.config.get('dhcp.dns') || ['0.0.0.0'];
+            const serverAddress = this.config.get('dhcp.serverAddress') || '0.0.0.0';
+            const gateways = this.config.get('dhcp.gateways') || ['0.0.0.0'];
+            const dns = this.config.get('dhcp.dns') || ['0.0.0.0'];
 
             const server = new dhcp.Server({
                 serverId: serverAddress,
@@ -235,10 +235,10 @@ module.exports = {
         },
 
         async createNewLease(ctx, mac) {
-            const range = await this.config.get('dhcp.range');
+            const range = this.config.get('dhcp.range');
             const lowerRange = range[0];
             const upperRange = range[1];
-            const addressSplit = (await this.config.get('dhcp.serverAddress')).split('.');
+            const addressSplit = this.config.get('dhcp.serverAddress').split('.');
             await this.lock.acquire('dhcp');
             for (let i = lowerRange; i <= upperRange; i++) {
                 const ip = `${addressSplit[0]}.${addressSplit[1]}.${addressSplit[2]}.${i}`;
@@ -257,10 +257,10 @@ module.exports = {
                         ip,
                         mac,
                         node: node.id,
-                        nextServer: await this.config.get('dhcp.serverAddress'),
-                        tftpServer: await this.config.get('dhcp.tftpServer'),
-                        bootFile: await this.config.get('dhcp.bootFile'),
-                        leaseTime: await this.config.get('dhcp.leaseTime'),
+                        nextServer: this.config.get('dhcp.serverAddress'),
+                        tftpServer: this.config.get('dhcp.tftpServer'),
+                        bootFile: this.config.get('dhcp.bootFile'),
+                        leaseTime: this.config.get('dhcp.leaseTime'),
                     }).then(async (entity) => {
                         await this.lock.release('dhcp');
                         return entity;
@@ -412,12 +412,17 @@ module.exports = {
             ack.giaddr = lease.nextServer;// gateway address
             ack.yiaddr = lease.ip;
 
-            ack.options.push(new dhcp.BroadcastAddressOption('255.255.255.255'));// #28
+            // set DHCP hostname option (12)
+            ack.options.push(new dhcp.HostnameOption(node.hostname));
+
+            // set broadcast address option (28)
+            ack.options.push(new dhcp.BroadcastAddressOption('255.255.255.255'));
+
+            // if node is not provisioned, set TFTP server and boot file options (66, 67)
             if (node.stage !== "provisioned") {
-                ack.options.push(new dhcp.BootFileOption(lease.bootFile));// #67
-                ack.options.push(new dhcp.TftpServerOption(lease.tftpServer));// #66
+                ack.options.push(new dhcp.BootFileOption(lease.bootFile));
+                ack.options.push(new dhcp.TftpServerOption(lease.tftpServer));
             }
-            ack.options.push(new dhcp.HostnameOption(node.hostname));// #12
 
             this.server.send(ack);
 

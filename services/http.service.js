@@ -12,6 +12,7 @@ const handler = require('serve-handler');
 const { createReadStream, createWriteStream } = require('fs');
 const crypto = require('crypto');
 
+const ConfigMixin = require("../mixins/config.mixin");
 
 /**
  * http server service
@@ -22,18 +23,16 @@ module.exports = {
     version: 1,
 
     mixins: [
-
+        ConfigMixin
     ],
 
     settings: {
-        http: {
-            port: 80,
-            address: '0.0.0.0',
-            root: './public',
-        },
-        ssl: {
-            key: null,
-            cert: null
+        config: {
+            "http.port": 80,
+            "http.address": '0.0.0.0',
+            "http.root": './public',
+            "http.ssl.key": null,
+            "http.ssl.cert": null
         }
     },
 
@@ -50,7 +49,7 @@ module.exports = {
             },
             async handler(ctx) {
                 const url = ctx.params.url;
-                const root = this.settings.http.root;
+                const root = this.config.get('http.root');
                 const localPath = ctx.params.path;
                 const kernelName = ctx.params.kernel;
 
@@ -91,15 +90,31 @@ module.exports = {
 
                 return result;
             }
-        }
+        },
+
+        clearCache: {
+            rest: {
+                method: "DELETE",
+                path: "/cache",
+            },
+            async handler(ctx) {
+                this.cache.clear();
+                return {
+                    success: true,
+                    message: 'Cache cleared'
+                }
+            }
+        },
+
+
     },
 
     events: {},
 
     methods: {
         async createHTTPServer() {
-            const port = this.settings.http.port || 80;
-            const host = this.settings.http.address || '0.0.0.0';
+            const port = this.config.get('http.port') || 80;
+            const host = this.config.get('http.address') || '0.0.0.0';
             this.httpServer = http.createServer((req, res) => {
                 this.onHTTPRequest(req, res);
             });
@@ -180,7 +195,7 @@ module.exports = {
                 return this.sendError(req, res, 404, `Kernel name ${node.kernel} not found`);
             }
 
-            const root = this.settings.http.root;
+            const root = this.config.get('http.root');
             const filePath = path.join(root, kernel.apkovl);
             // save file
             const fileStream = createWriteStream(filePath);
@@ -244,45 +259,57 @@ module.exports = {
             this.logger.info(`File ${cache.filePath} not found`);
         },
 
+        /**
+         * Handles HTTP requests for mirrored files.
+         * @param {Context} ctx - Moleculer context object
+         * @param {Object} req - HTTP request object
+         * @param {Object} res - HTTP response object
+         */
         async handleMirror(ctx, req, res) {
             const ip = req.socket.remoteAddress.replace(/^.*:/, '');
+
+            // Lookup node by IP address
             const node = await ctx.call('v1.nodes.lookup', { ip });
             if (!node) {
                 return this.sendError(req, res, 404, `Node with ip ${ip} not found`);
             }
-            // get the kernel name
+
+            // Extract kernel name from URL
             const kernelName = req.url.split('/')[1];
             if (!kernelName) {
                 return this.sendError(req, res, 404, `Kernel name ${kernelName} not found`);
             }
 
+            // Lookup kernel by name
             const kernel = await ctx.call('v1.kernels.lookup', { name: kernelName });
             if (!kernel) {
                 return this.sendError(req, res, 404, `Kernel name ${kernelName} not found`);
             }
 
-            // get cache entry
+            // Retrieve or create cache entry
             let cache = this.cache.get(req.url);
             if (!cache) {
-                // create new cache entry
                 cache = await this.createCacheEntry(ctx, req.url, kernel);
             }
 
+            // Queue request for processing
             cache.requests.push({ ctx, req, res });
 
+            // Update node status if specific conditions are met
             if (kernel.name == 'alpine' && req.url == `/${kernel.modloop}`) {
-                // update node state
                 await ctx.call('v1.nodes.setStatus', {
                     id: node.id,
                     status: 'running'
                 });
             }
 
+            // Serve file if already downloaded
             if (cache.isDownloaded) {
                 this.logger.info(`Cache entry hit is downloaded for ${req.url}`);
                 return this.serveStatic(ctx, cache);
             }
 
+            // Start download if not already downloading
             if (!cache.isDownloading) {
                 return this.downloadCacheEntry(ctx, cache);
             }
@@ -292,6 +319,11 @@ module.exports = {
             return cache;
         },
 
+        /**
+         * Downloads a cache entry if it is not already downloading.
+         * @param {Context} ctx - Moleculer context object
+         * @param {Object} cache - Cache entry object
+         */
         async downloadCacheEntry(ctx, cache) {
 
             // download file
@@ -299,7 +331,7 @@ module.exports = {
 
             const kernel = cache.kernel;
             const cacheURL = cache.url;
-            const root = this.settings.http.root;
+            const root = this.config.get('http.root');
 
             const filePath = path.resolve(`${root}/${cacheURL}`);
 
@@ -397,8 +429,8 @@ module.exports = {
         },
 
         async handleK3OSConfig(ctx, req, res) {
-
             const ip = req.socket.remoteAddress.replace(/^.*:/, '');
+
             const node = await ctx.call('v1.nodes.lookup', { ip });
             if (!node) {
                 return this.sendError(req, res, 404, `Node with ip ${ip} not found`);
@@ -419,7 +451,7 @@ module.exports = {
                 await ctx.call('v1.nodes.setToken', { id: node.id, token });
                 node.token = token;
             } else {
-                const controlNode = await ctx.call('v1.nodes.controlNode');
+                const controlNode = await ctx.call('v1.nodes.controlNode', { group: node.group });
                 await ctx.call('v1.nodes.setToken', { id: controlNode.id, token: controlNode.token });
                 node.token = controlNode.token;
             }
@@ -453,7 +485,7 @@ module.exports = {
             }
 
             if (!node.controlNode) {
-                const controlNode = await ctx.call('v1.nodes.controlNode');
+                const controlNode = await ctx.call('v1.nodes.controlNode', { group: node.group });
                 config.k3os.server_url = `https://${controlNode.ip}:6443`;
             }
 

@@ -118,6 +118,7 @@ module.exports = {
             options: { type: "object", required: false, default: {} },
             controlNode: { type: "boolean", required: false, default: false },
             token: { type: "string", required: false },
+            group: { type: "string", required: false },
 
 
             id: { type: "string", primaryKey: true, columnName: "_id" /*, generated: "user"*/ },
@@ -247,8 +248,23 @@ module.exports = {
                 method: "GET",
                 path: "/control-node",
             },
+            params: {
+                group: { type: "string", optional: true }
+            },
             async handler(ctx) {
-                return this.getNodeByControlNode(ctx);
+                const group = ctx.params.group;
+
+                const query = {
+                    controlNode: true
+                };
+
+                if (group) {
+                    query.group = group;
+                }
+
+                return this.findEntity(ctx, {
+                    query
+                });
             }
         },
 
@@ -695,9 +711,6 @@ module.exports = {
             return fs.readFile(this.settings.authorizedKeys, 'utf8');
         },
 
-        async getNodeByControlNode(ctx) {
-            return this.findEntity(ctx, { query: { controlNode: true } });
-        },
     },
 
     created() {

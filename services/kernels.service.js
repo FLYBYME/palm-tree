@@ -2,6 +2,7 @@ const DbService = require("@moleculer/database").Service;
 const { MoleculerClientError } = require("moleculer").Errors;
 const Context = require("moleculer").Context;
 
+const ConfigMixin = require("../mixins/config.mixin");
 /**
  * Netboot Kernel Service
  */
@@ -16,7 +17,8 @@ module.exports = {
                 type: "NeDB",
                 options: "./db/kernels.db"
             }
-        })
+        }),
+        ConfigMixin
     ],
 
     settings: {
@@ -45,7 +47,7 @@ module.exports = {
 
             cmdline: { type: "string", required: false },
 
-            options:{
+            options: {
                 type: "object",
                 required: false,
                 default: {}
@@ -183,7 +185,8 @@ module.exports = {
             bootFile.push('set initramfs http://${next-server}/' + kernel.initramfs);
             bootFile.push('echo initramfs is ${initramfs}');
 
-            if (this.settings['kernels.debug']) {
+            const debug = this.config.get('kernels.debug');
+            if (debug) {
                 bootFile.push('ifstat');
                 bootFile.push('route');
                 bootFile.push('ipstat');
@@ -235,7 +238,7 @@ module.exports = {
                 installParams.push(`k3os.install.iso_url=http://${lease.nextServer}/${kernel.iso}`);
 
                 kernelCMD.push(installParams.join(' '));
-            } else if(kernel.name == 'coreos') {
+            } else if (kernel.name == 'coreos') {
                 const installParams = [];
                 const lease = await ctx.call('v1.dhcp.lookup', { ip: node.ip });
 
