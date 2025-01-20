@@ -28,4 +28,9 @@
             </div>
         </div>
     </div>
+    <button type="button" class="btn btn-primary" ng-click="$ctrl.showTest()">Test</button>
 </div>
+<button ng-click="$ctrl.showModal()">Open Modal</button>
+<button ng-click="$ctrl.hideModal()">Close Modal</button>
+
+<bootstrap-model-directive options="$ctrl.modalOptions" on-submit="$ctrl.handleSubmit(data)" form="$ctrl.modalForm" id="model"></bootstrap-model-directive>

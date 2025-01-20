@@ -3,10 +3,6 @@ const DbService = require("@moleculer/database").Service;
 const { MoleculerClientError } = require("moleculer").Errors;
 const Context = require("moleculer").Context;
 
-const os = require("os");
-const path = require("path");
-const Moniker = require('moniker');
-
 const Lock = require("../lib/lock");
 
 const dhcp = require("@network-utils/dhcp");
@@ -275,42 +271,6 @@ module.exports = {
             return null;
         },
 
-        async setDHCPOptions(ctx, packet, node, lease) {
-            packet.options.push(new dhcp.HostnameOption(node.hostname));
-            packet.options.push(new dhcp.DomainNameOption('cloud.local'));
-            packet.options.push(new dhcp.AddressRequestOption(lease.ip));
-            packet.options.push(new dhcp.DHCPServerIdOption(lease.nextServer));
-            packet.options.push(new dhcp.SubnetMaskOption(this.settings.dhcp.netmask));
-            packet.options.push(new dhcp.BroadcastAddressOption('255.255.255.255'));
-            packet.options.push(new dhcp.AddressTimeOption(lease.leaseTime));
-            packet.options.push(new dhcp.RenewalTimeOption(lease.leaseTime));
-            packet.options.push(new dhcp.RebindingTimeOption(lease.leaseTime));
-
-            if (node.stage !== "provisioned") {
-                packet.options.push(new dhcp.BootFileOption(lease.bootFile));
-                packet.options.push(new dhcp.TftpServerOption(lease.tftpServer));
-            }
-
-            packet.options.push(new dhcp.GatewaysOption([lease.nextServer]));
-            //packet.options.push(new dhcp.DomainServerOption([lease.nextServer]));
-            packet.options.push(new dhcp.BroadcastAddressOption('255.255.255.255'));
-        },
-
-        async createPacket(ctx, pkt, node, lease) {
-
-            const packet = new dhcp.Packet();
-            packet.op = dhcp.BOOTMessageType.reply;
-            packet.xid = pkt.xid;// transaction id
-            packet.flags = pkt.flags;// flags 
-            packet.chaddr = pkt.chaddr;// client mac address
-            packet.siaddr = lease.nextServer;// 
-            packet.giaddr = lease.nextServer;// gateway address
-            packet.yiaddr = lease.ip;
-
-            return packet;
-        },
-
-
         /**
          * Handle DHCP discover request
          * @param {Context} ctx - moleculer context
@@ -329,14 +289,14 @@ module.exports = {
             }
 
             if (!lease) {
-                this.logger.info(`DHCP Server no available IP address for ${pkt.chaddr}`);
+                this.logger.warn(`DHCP Server no available IP address for ${pkt.chaddr}`);
                 return;
             }
 
             // resolve node by id
             const node = await ctx.call('v1.nodes.resolve', { id: lease.node });
             if (!node) {
-                this.logger.info(`DHCP Server no available node for ${pkt.chaddr}`);
+                this.logger.warn(`DHCP Server no available node for ${pkt.chaddr}`);
                 return;
             }
 
@@ -345,6 +305,7 @@ module.exports = {
             offer.xid = pkt.xid;// transaction id
             offer.flags = pkt.flags;// flags 
             offer.chaddr = pkt.chaddr;// client mac address
+
             offer.siaddr = lease.nextServer;// server ip
             offer.giaddr = lease.nextServer;// gateway address
             offer.yiaddr = lease.ip;

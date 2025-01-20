@@ -20,9 +20,12 @@ module.exports = {
         const keys = Object.keys(this.settings.config || {});
         for (const key of keys) {
             const value = this.settings.config[key];
-            const found = this.config.get(key);
+            const found = await this.broker.call("v1.config.get", { key });
             if (!found) {
-                this.config.set(key, value);
+                await this.broker.call("v1.config.set", { key, value })
+                    .catch(err => {
+                        this.logger.error(`Config error: ${err.message}`, key, value);
+                    });
             }
         }
         const all = await this.broker.call("v1.config.all");

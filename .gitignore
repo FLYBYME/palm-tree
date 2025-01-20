@@ -68,3 +68,5 @@ config.json
 config.*.json
 public/
 ipxe/
+
+frontend/*

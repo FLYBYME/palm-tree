@@ -1,5 +1,7 @@
 import angular from 'angular';
-
+import events from 'events';
+import $ from 'jquery';
+import { v4 as uuid } from 'uuid';
 import HomeTemplate from './template.html';
 
 class HomeController {
@@ -23,6 +25,30 @@ class HomeController {
         this.nodeCount = 0;
         this.leaseCount = 0;
         this.kernelCount = 0;
+        this.modalOptions = {
+            title: 'Example Modal',
+            items: [
+                { title: 'Name', type: 'text', key: 'name', required: true },
+                { title: 'Email', type: 'email', key: 'email', required: false },
+                { title: 'Options', type: 'options', key: 'selection', options: [{ name: 'Option 1', value: '1' }, { name: 'Option 2', value: '2' }] }
+            ]
+        };
+        this.modalForm = {};
+
+        this.showModal = () => {
+            console.log('controller show modal');
+            this.modalForm = {};
+            $scope.$broadcast('show-modal', { id: 'model' });
+        };
+
+        this.hideModal = () => {
+            $scope.$broadcast('hide-modal', { id: 'model' });
+        };
+
+        this.handleSubmit = () => {
+            console.log(this.modalForm);
+        };
+
 
         Promise.all([this.getNodes(), this.getDhcp(), this.getKernels()]);
     }

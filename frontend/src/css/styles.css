@@ -1,159 +1,69 @@
-body {
+#body-row {
+    margin-left: 0;
+    margin-right: 0;
+}
+
+#sidebar-container {
+    min-height: 100vh;
+    background-color: #333;
+    padding: 0;
+}
+
+/* Sidebar sizes when expanded and expanded */
+.sidebar-expanded {
+    width: 230px;
+}
+
+.sidebar-collapsed {
+    width: 60px;
+}
+
+/* Menu item*/
+#sidebar-container .list-group a {
+    height: 50px;
+    color: white;
+}
+
+/* Submenu item*/
+#sidebar-container .list-group .sidebar-submenu a {
+    height: 45px;
+    padding-left: 30px;
+}
+
+.sidebar-submenu {
     font-size: 0.9rem;
 }
 
-.sidebar {
-    height: 100vh;
-    background: #343a40;
-    color: #fff;
-    position: fixed;
-    top: 0;
-    left: 0;
-    padding-top: 20px;
-    width: 220px;
+/* Separators */
+.sidebar-separator-title {
+    background-color: #333;
+    height: 35px;
 }
 
-.sidebar a {
-    color: #fff;
-    padding: 10px 15px;
-    display: block;
-    text-decoration: none;
+.sidebar-separator {
+    background-color: #333;
+    height: 25px;
 }
 
-.sidebar a:hover {
-    background: #495057;
+.logo-separator {
+    background-color: #333;
+    height: 60px;
 }
 
-.main-content {
-    margin-left: 220px;
-    padding: 20px;
+/* Closed submenu icon */
+#sidebar-container .list-group .list-group-item[aria-expanded="false"] .submenu-icon::after {
+    content: " \f0d7";
+    font-family: FontAwesome;
+    display: inline;
+    text-align: right;
+    padding-left: 10px;
 }
 
-.settings-card {
-    margin-top: 20px;
-}
-
-.table {
-    margin: 0;
-    /* Remove extra margin */
-    border: 1px solid #ddd;
-    /* Add a border to the table */
-    border-radius: 8px;
-    /* Round the table corners */
-    overflow: hidden;
-    /* Ensure rounded corners appear */
-}
-
-.table thead {
-    background-color: #007bff;
-    /* Add a primary color to the header */
-    color: white;
-    /* White text for contrast */
-    font-weight: bold;
-    /* Bold font for headers */
-}
-
-.table th,
-.table td {
-    text-align: center;
-    /* Center align content */
-    vertical-align: middle;
-    /* Align vertically in the middle */
-    padding: 10px;
-    /* Add padding for spacing */
-    border: 1px solid #ddd;
-    /* Add borders between cells */
-}
-
-.table tbody tr:nth-child(even) {
-    background-color: #f8f9fa;
-    /* Add a light background for alternating rows */
-}
-
-.table tbody tr:hover {
-    background-color: #e9ecef;
-    /* Add a subtle hover effect for rows */
-}
-
-.card-header {
-    background-color: #007bff;
-    /* Use primary color for card header */
-    color: white;
-    /* White text for contrast */
-    font-size: 1.2rem;
-    /* Slightly larger font */
-    font-weight: bold;
-    /* Bold font */
-    padding: 10px;
-    /* Add padding */
-    border-radius: 8px 8px 0 0;
-    /* Round top corners */
-}
-
-.btn-primary {
-    font-size: 0.9rem;
-    /* Adjust button font size */
-    padding: 5px 10px;
-    /* Adjust button padding */
-    border-radius: 4px;
-    /* Slightly rounded button */
-}
-
-.card {
-    margin: 15px 0;
-    /* Add space between cards */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    /* Add a subtle shadow for depth */
-    border-radius: 8px;
-    /* Slightly round the corners */
-    border: none;
-    /* Remove default border */
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-    /* Add hover effect */
-}
-
-.card:hover {
-    transform: scale(1.02);
-    /* Slightly enlarge on hover */
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-    /* Enhance shadow on hover */
-}
-
-.card-header {
-    background-color: #007bff;
-    /* Use a primary color for header background */
-    color: white;
-    /* White text for contrast */
-    font-size: 1.2rem;
-    /* Slightly increase font size */
-    font-weight: bold;
-    /* Make the text bold */
-    padding: 10px;
-    /* Add padding */
-    border-radius: 8px 8px 0 0;
-    /* Round top corners */
-}
-
-.card-body {
-    padding: 15px;
-    /* Add padding for content */
-}
-
-.list-group-item {
-    padding: 8px 12px;
-    /* Adjust padding for a cleaner look */
-    font-size: 0.95rem;
-    /* Slightly decrease font size */
-    border: none;
-    /* Remove borders between list items */
-}
-
-.list-group-item strong {
-    color: #007bff;
-    /* Use primary color for highlights */
-}
-
-.row {
-    margin: 0 -15px;
-    /* Adjust margins to align with Bootstrap's grid */
+/* Opened submenu icon */
+#sidebar-container .list-group .list-group-item[aria-expanded="true"] .submenu-icon::after {
+    content: " \f0da";
+    font-family: FontAwesome;
+    display: inline;
+    text-align: right;
+    padding-left: 10px;
 }
