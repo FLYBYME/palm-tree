@@ -205,6 +205,136 @@ The `http` service provides HTTP server capabilities, allowing interaction with 
 - `started()`: Starts the HTTP server.
 - `stopped()`: Stops the HTTP server.
 
+### Nodes Service
+
+The `nodes` service manages the lifecycle of nodes, including registration, configuration, and status updates. It interacts with the `dhcp`, `kernels`, and `http` services to provide a seamless PXE boot experience.
+
+#### Configuration
+
+```javascript
+{
+  hostname: "string",
+  ip: "string",
+  lease: "string",
+  kernel: "string",
+  password: "string",
+  authorizedKeys: "string",
+  stage: "string",
+  status: "string",
+  cores: "number",
+  cpuModel: "string",
+  memory: "number",
+  disks: "array",
+  networkInterfaces: "array",
+  options: "object",
+  controlNode: "boolean",
+  token: "string",
+  group: "string"
+}
+```
+
+#### Actions
+
+- `lookup`: Retrieve a node by IP address.
+  - **Method**: GET
+  - **Path**: `/lookup/:ip`
+  - **Params**: 
+    - `ip` (string, required): The IP address to look up.
+
+- `register`: Register a new node.
+  - **Method**: POST
+  - **Path**: `/register`
+  - **Params**: 
+    - `ip` (string, required): The IP address of the node.
+    - `kernel` (string, optional): The kernel to use for the node.
+
+- `setControlNode`: Set a node as a control node.
+  - **Method**: POST
+  - **Path**: `/:id/set-control-node`
+  - **Params**: 
+    - `id` (string, required): The ID of the node.
+    - `controlNode` (boolean, required): Whether the node is a control node.
+
+- `controlNode`: Retrieve the control node for a group.
+  - **Method**: GET
+  - **Path**: `/control-node`
+  - **Params**: 
+    - `group` (string, optional): The group to look up.
+
+- `setStage`: Set the stage of a node.
+  - **Method**: POST
+  - **Path**: `/:id/set-stage`
+  - **Params**: 
+    - `id` (string, required): The ID of the node.
+    - `stage` (string, required): The stage to set.
+
+- `setStatus`: Set the status of a node.
+  - **Method**: POST
+  - **Path**: `/:id/set-status`
+  - **Params**: 
+    - `id` (string, required): The ID of the node.
+    - `status` (string, required): The status to set.
+
+- `setLease`: Set the lease of a node.
+  - **Method**: POST
+  - **Path**: `/:id/set-lease`
+  - **Params**: 
+    - `id` (string, required): The ID of the node.
+    - `lease` (string, required): The lease to set.
+
+- `setToken`: Set the token of a node.
+  - **Method**: POST
+  - **Path**: `/:id/set-token`
+  - **Params**: 
+    - `id` (string, required): The ID of the node.
+    - `token` (string, required): The token to set.
+
+- `getAuthorizedKeys`: Retrieve the authorized keys for a node.
+  - **Method**: GET
+  - **Path**: `/authorized-keys`
+  - **Params**: 
+    - `id` (string, required): The ID of the node.
+
+- `setAuthorizedKeys`: Set the authorized keys for a node.
+  - **Method**: POST
+  - **Path**: `/authorized-keys`
+  - **Params**: 
+    - `id` (string, required): The ID of the node.
+    - `authorizedKeys` (string, required): The authorized keys to set.
+
+- `getSystemInfo`: Retrieve the system information for a node.
+  - **Method**: GET
+  - **Path**: `/:id/system-info`
+  - **Params**: 
+    - `id` (string, required): The ID of the node.
+
+- `commission`: Commission a node.
+  - **Method**: POST
+  - **Path**: `/:id/commission`
+  - **Params**: 
+    - `id` (string, required): The ID of the node.
+
+- `clearDB`: Clear all nodes from the database.
+  - **Method**: POST
+  - **Path**: `/clear`
+  - **Params**: None
+
+#### Methods
+
+- `getNodeById(ctx, id)`: Retrieves a node by its ID.
+- `getNodeByIp(ctx, ip)`: Retrieves a node by its IP address.
+- `parseCpuinfoToJson(cpuInfo)`: Parses CPU information to JSON.
+- `parseLsblkToJson(json)`: Parses disk information to JSON.
+- `parseIpLinkToJson(input)`: Parses network interface information to JSON.
+- `parseMeminfoToJson(input)`: Parses memory information to JSON.
+- `getAuthorizedKeys(ctx)`: Retrieves the authorized keys from the file system.
+
+#### Lifecycle Hooks
+
+- `created()`: Initializes the nodes service.
+- `started()`: Starts the nodes service.
+- `stopped()`: Stops the nodes service.
+
 ### TFTP Server Service
 
 The `tftp` service provides TFTP server capabilities to support PXE boot processes. It serves critical files such as iPXE binaries and boot configuration files.
@@ -227,6 +357,7 @@ The `tftp` service provides TFTP server capabilities to support PXE boot process
 
 - The `dhcp` service interacts with the `kernels` service for providing necessary files during PXE boot.
 - The `http` and `tftp` services serve files required for kernel and PXE operations.
+- The `nodes` service manages node registration, configuration, and status updates.
 - Nodes are dynamically registered and resolved during DHCP requests.
 - iPXE boot files are generated dynamically with kernel configurations.
 
