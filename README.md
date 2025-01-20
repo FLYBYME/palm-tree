@@ -39,6 +39,40 @@ The `dhcp` service manages IP address leasing and PXE boot configurations:
 }
 ```
 
+#### Actions
+
+- `lookup`: Retrieve a lease by IP address.
+  - **Method**: GET
+  - **Path**: `/lookup/:ip`
+  - **Params**: 
+    - `ip` (string, required): The IP address to look up.
+
+- `clearDB`: Clear all DHCP leases from the database.
+  - **Method**: POST
+  - **Path**: `/clear`
+  - **Params**: None
+
+#### Methods
+
+- `createServer()`: Creates and configures the DHCP server.
+- `attachEvents(server)`: Attaches event handlers to the DHCP server.
+- `stopServer()`: Stops the DHCP server.
+- `getByMac(ctx, mac)`: Retrieves a lease by MAC address.
+- `getByIp(ctx, ip)`: Retrieves a lease by IP address.
+- `createNewLease(ctx, mac)`: Creates a new DHCP lease.
+- `handleDiscover(ctx, event)`: Handles DHCP discover requests.
+- `handleRequest(ctx, event)`: Handles DHCP request acknowledgments.
+
+#### Events
+
+- `nodes.removed`: Handles the removal of nodes and cleans up associated leases.
+
+#### Lifecycle Hooks
+
+- `created()`: Initializes the DHCP server and lock mechanism.
+- `started()`: Starts the DHCP server.
+- `stopped()`: Stops the DHCP server.
+
 ### Kernels Service
 
 The `kernels` service manages bootable kernels for PXE. It provides functionality to define, store, and retrieve kernel configurations.
@@ -56,6 +90,57 @@ The `kernels` service manages bootable kernels for PXE. It provides functionalit
   modloop: "boot/modloop-lts"
 }
 ```
+
+#### Actions
+
+- `lookup`: Retrieve kernel details by name.
+  - **Method**: GET
+  - **Path**: `/lookup/:name`
+  - **Params**: 
+    - `name` (string, required): The name of the kernel to look up.
+
+- `generateBootFile`: Generate a boot file for a specific node and kernel.
+  - **Method**: GET
+  - **Path**: `/generateBootFile/:node/:kernel`
+  - **Params**: 
+    - `node` (string, required): The ID of the node.
+    - `kernel` (string, required): The ID of the kernel.
+
+#### Methods
+
+- `generateBootFile(ctx, node, kernel)`: Generates the boot file content based on the node and kernel configuration.
+- `loadKernels()`: Loads the kernel configurations from the database or initializes them if not present.
+- `getKernelById(ctx, id)`: Retrieves a kernel configuration by its ID.
+
+#### Kernel Types
+
+The service supports multiple kernel types, including:
+
+- **Alpine Linux**: 
+  - `name`: "alpine"
+  - `version`: "3.14.0"
+  - `arch`: "x86_64"
+  - `cmdline`: "console=tty0 modules=loop,squashfs quiet nomodeset"
+  - `vmlinuz`: "alpine/netboot/3.14.0/vmlinuz-lts"
+  - `initramfs`: "alpine/netboot/3.14.0/initramfs-lts"
+  - `modloop`: "alpine/netboot/3.14.0/modloop-lts"
+  - `repo`: "alpine/v3.14/main/"
+  - `archive`: "http://dl-cdn.alpinelinux.org"
+  - `apkovl`: "alpine/netboot/3.14.0/apkovl-lts.apkovl.tar.gz"
+
+- **K3OS**: 
+  - `name`: "k3os"
+  - `version`: "v0.21.5-k3s2r1"
+  - `arch`: "x86_64"
+  - `cmdline`: "printk.devkmsg=on console=ttyS0 console=tty1 initrd=initrd.magic"
+  - `vmlinuz`: "k3os/v0.21.5-k3s2r1/k3os-vmlinuz-amd64"
+  - `initramfs`: "k3os/v0.21.5-k3s2r1/k3os-initramfs-amd64"
+  - `options`: 
+    - `silent`: true
+    - `poweroff`: false
+    - `mode`: "install"
+    - `config_url`: "k3os/config"
+    - `iso_url`: "k3os/v0.21.5-k3s2r1/k3os-amd64.iso"
 
 ### HTTP Server Service
 
@@ -76,6 +161,49 @@ The `http` service provides HTTP server capabilities, allowing interaction with 
   }
 }
 ```
+
+#### Actions
+
+- `downloadFile`: Downloads a file from a URL to a specified path.
+  - **Method**: POST
+  - **Path**: `/downloader`
+  - **Params**: 
+    - `url` (string, required): The URL of the file to download.
+    - `path` (string, required): The local path to save the file.
+    - `kernel` (string, required): The name of the kernel associated with the file.
+
+- `cache`: Retrieves the current cache status.
+  - **Method**: GET
+  - **Path**: `/cache`
+  - **Params**: None
+
+- `clearCache`: Clears the cache.
+  - **Method**: DELETE
+  - **Path**: `/cache`
+  - **Params**: None
+
+#### Methods
+
+- `createHTTPServer()`: Creates and configures the HTTP server.
+- `closeServer()`: Closes the HTTP server.
+- `onHTTPRequest(req, res)`: Handles incoming HTTP requests.
+- `handleIgnitionConfig(ctx, req, res)`: Handles requests for CoreOS Ignition configuration.
+- `handleApkOvlUpload(ctx, req, res)`: Handles APK overlay uploads.
+- `handleSSHKeys(ctx, req, res)`: Handles requests for SSH keys.
+- `sendFileResponse(ctx, req, res, filePath, fileSize)`: Sends a file response.
+- `sendError(req, res, code, message)`: Sends an error response.
+- `serveStatic(ctx, cache)`: Serves static files from the public folder.
+- `handleMirror(ctx, req, res)`: Handles HTTP requests for mirrored files.
+- `downloadCacheEntry(ctx, cache)`: Downloads a cache entry if it is not already downloading.
+- `downloadFile(ctx, url, filePath, cache)`: Downloads a file from a URL to a specified path.
+- `createCacheEntry(ctx, url, kernel)`: Creates a cache entry for a file.
+- `handleK3OSConfig(ctx, req, res)`: Handles requests for K3OS configuration.
+
+#### Lifecycle Hooks
+
+- `created()`: Initializes the HTTP server and cache.
+- `started()`: Starts the HTTP server.
+- `stopped()`: Stops the HTTP server.
 
 ### TFTP Server Service
 
