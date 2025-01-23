@@ -38,6 +38,7 @@
     "moniker": "^0.1.2",
     "nats": "^2.10.2",
     "node-wol": "^0.1.1",
+    "serve-handler": "^6.1.6",
     "serve-static": "^1.15.0",
     "ssh2": "^1.16.0",
     "tftp": "^0.1.2"
