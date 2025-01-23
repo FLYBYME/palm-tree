@@ -6,6 +6,7 @@ const Moniker = require('moniker');
 const crypto = require('crypto');
 
 const NodeActionsMixin = require("../mixins/node.actions.mixin");
+const Config = require("config-service");
 
 module.exports = {
     name: "nodes",
@@ -18,7 +19,8 @@ module.exports = {
                 options: "./db/nodes.db"
             }
         }),
-        NodeActionsMixin
+        NodeActionsMixin,
+        Config.Mixin
     ],
 
     settings: {

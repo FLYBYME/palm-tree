@@ -5,6 +5,7 @@ const tftp = require("tftp");
 const path = require('path');
 const fs = require('fs').promises;
 const { createReadStream } = require('fs');
+const Config = require("config-service");
 /**
  * Netboot tftp server
  */
@@ -14,7 +15,7 @@ module.exports = {
     version:1,
 
     mixins: [
-
+        Config.Mixin
     ],
 
     settings: {

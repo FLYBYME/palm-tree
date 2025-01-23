@@ -6,9 +6,7 @@ const Context = require("moleculer").Context;
 const Lock = require("../lib/lock");
 
 const dhcp = require("@network-utils/dhcp");
-
-const ConfigMixin = require("../mixins/config.mixin");
-
+const Config = require("config-service");
 
 
 /** 
@@ -25,7 +23,7 @@ module.exports = {
                 options: "./db/dhcp.db"
             }
         }),
-        ConfigMixin
+        Config.Mixin
     ],
 
     /**

@@ -2,7 +2,7 @@ const DbService = require("@moleculer/database").Service;
 const { MoleculerClientError } = require("moleculer").Errors;
 const Context = require("moleculer").Context;
 
-const ConfigMixin = require("../mixins/config.mixin");
+const Config = require("config-service");
 /**
  * Netboot Kernel Service
  */
@@ -18,7 +18,7 @@ module.exports = {
                 options: "./db/kernels.db"
             }
         }),
-        ConfigMixin
+         Config.Mixin
     ],
 
     settings: {

@@ -5,7 +5,7 @@ const fs = require('fs').promises;
 const ssh = require("ssh2");
 const ws = require('ws');
 
-const ConfigMixin = require("../mixins/config.mixin");
+const Config = require("config-service");
 
 module.exports = {
     name: "terminal",
@@ -23,7 +23,7 @@ module.exports = {
     ],
 
     mixins: [
-        ConfigMixin
+         Config.Mixin
     ],
 
     settings: {

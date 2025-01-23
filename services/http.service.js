@@ -12,7 +12,7 @@ const handler = require('serve-handler');
 const { createReadStream, createWriteStream } = require('fs');
 const crypto = require('crypto');
 
-const ConfigMixin = require("../mixins/config.mixin");
+const Config = require("config-service");
 
 /**
  * http server service
@@ -23,7 +23,7 @@ module.exports = {
     version: 1,
 
     mixins: [
-        ConfigMixin
+         Config.Mixin
     ],
 
     settings: {

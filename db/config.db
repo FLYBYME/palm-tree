@@ -1,0 +1,16 @@
+{"key":"dhcp.port","value":67,"createdAt":1737674641238,"_id":"gP7ks2LaNpjnM2OF"}
+{"key":"http.port","value":80,"createdAt":1737674641238,"_id":"DJoLIRsN1V1lb7B2"}
+{"key":"kernels.debug","value":true,"createdAt":1737674641238,"_id":"2bM65P44YhhmJLtX"}
+{"key":"dhcp.serverAddress","value":"10.1.10.1","createdAt":1737674641260,"_id":"ABxPDVIMyIdR2yKG"}
+{"key":"http.address","value":"0.0.0.0","createdAt":1737674641263,"_id":"Hc33zA5ZvWWeXJ7v"}
+{"key":"dhcp.gateways","value":["10.1.10.1"],"createdAt":1737674641278,"_id":"dLzAvRerua6b3ZLf"}
+{"key":"http.root","value":"./public","createdAt":1737674641279,"_id":"TmJ7SJpyAsdsdsID"}
+{"key":"dhcp.dns","value":["1.1.1.1"],"createdAt":1737674641291,"_id":"o6jxVFCeJy45WLaC"}
+{"key":"dhcp.range","value":[10,99],"createdAt":1737674641341,"_id":"zTMk8kFtAQrBXFow"}
+{"key":"dhcp.nextServer","value":"10.1.10.1","createdAt":1737674641344,"_id":"UibBzv8IosyBvTz6"}
+{"key":"dhcp.tftpServer","value":"10.1.10.1","createdAt":1737674641349,"_id":"orKcS1DCWMnBhvTj"}
+{"key":"dhcp.bootFile","value":"/ipxe.efi","createdAt":1737674641351,"_id":"nkbTWEPQelrIm1ZA"}
+{"key":"dhcp.leaseTime","value":3600,"createdAt":1737674641353,"_id":"lqxYsjoeKVWcgfXz"}
+{"key":"terminal.ssh.user","value":"root","createdAt":1737674642227,"_id":"034Al7AE1liQTXgN"}
+{"key":"terminal.ssh.privateKey","value":"/root/.ssh/id_ecdsa","createdAt":1737674642229,"_id":"012hqHMalPTiJnNz"}
+{"key":"terminal.ws.port","value":8082,"createdAt":1737674642231,"_id":"cEwB8GcKJybTebS3"}
