@@ -3,7 +3,6 @@ const { MoleculerClientError } = require("moleculer").Errors;
 
 const fs = require('fs').promises;
 const ssh = require("ssh2");
-const pty = require('node-pty');
 const ws = require('ws');
 
 const ConfigMixin = require("../mixins/config.mixin");

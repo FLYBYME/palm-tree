@@ -41,7 +41,8 @@
     "serve-handler": "^6.1.6",
     "serve-static": "^1.15.0",
     "ssh2": "^1.16.0",
-    "tftp": "^0.1.2"
+    "tftp": "^0.1.2",
+    "ws": "^8.18.0"
   },
   "engines": {
     "node": ">= 16.x.x"
