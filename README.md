@@ -13,17 +13,61 @@ A robust Preboot Execution Environment (PXE) boot server implementation with DHC
 
 ## Installation
 
+### Ports
+- 80: HTTP server
+- 4000: API server
+- 8082: Terminal server
+- 67: DHCP server
+- 69: TFTP server
+
+### Volumes
+
+- `/app/db`: Database data
+- `/app/public`: Public files
+
+### Docker
 To run the services, install Docker and run the following command:
 ```bash
-docker run -d --name palm-tree --restart always -p 80:80 -p 4000:4000 -p 8082:8082 -p 67:67 -p 69:69 -v /path/to/data:/app/db -v /path/to/public:/app/public ghcr.io/flybyme/palm-tree:master
+docker run -d \
+  --name palm-tree \
+  --restart always \
+  -p 80:80 \
+  -p 4000:4000 \
+  -p 8082:8082 \
+  -p 67:67 \
+  -p 69:69 \
+  -v /path/to/data:/app/db \
+  -v /path/to/public:/app/public \
+  ghcr.io/flybyme/palm-tree:master
 ```
 For Nats as the transporter
 
 ```bash
-docker run -d --name palm-tree --restart always -p 80:80 -p 4000:4000 -p 8082:8082 -p 67:67 -p 69:69 -e TRANSPORTER=nats://10.1.10.1:4222 -v /path/to/data:/app/db -v /path/to/public:/app/public ghcr.io/flybyme/palm-tree:master
+docker run -d \
+  --name palm-tree \
+  --restart always \
+  -p 80:80 \
+  -p 4000:4000 \
+  -p 8082:8082 \
+  -p 67:67 \
+  -p 69:69 \
+  -e TRANSPORTER=nats://10.1.10.1:4222 \
+  -v /path/to/data:/app/db \
+  -v /path/to/public:/app/public \
+  ghcr.io/flybyme/palm-tree:master
 ```
 
 Replace `/path/to/data` with the path to your data directory.
+
+### Node.js
+
+To run the services, install Node.js and run the following command:
+```bash
+git clone https://github.com/flybyme/palm-tree.git
+cd palm-tree
+npm install
+npm run dev
+```
 
 ## Services
 
@@ -385,30 +429,6 @@ The `tftp` service provides TFTP server capabilities to support PXE boot process
 
 - Logs key events such as file transfers and errors.
 - Provides detailed warnings for invalid or failed requests.
-
-## Getting Started
-
-To get started with the PXE Boot Server, follow these steps:
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/FLYBYME/palm-tree.git
-   cd palm-tree
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Configure the services by editing the configuration files as needed.
-
-4. Start the server:
-   ```bash
-   npm run dev
-   ```
-
-5. Access the management UI in your browser at `http://<server-ip>:<port>`.
 
 ## Contributing
 
