@@ -11,6 +11,20 @@ A robust Preboot Execution Environment (PXE) boot server implementation with DHC
 - Dynamic node registration and configuration
 - Browser-based management UI
 
+## Installation
+
+To run the services, install Docker and run the following command:
+```bash
+docker run -d --name palm-tree --restart always -p 80:80 -p 67:67 -p 69:69 -v /path/to/data:/app/db ghcr.io/flybyme/palm-tree:master
+```
+For Nats as the transporter
+
+```bash
+docker run -d --name palm-tree --restart always -p 80:80 -p 67:67 -p 69:69 -e TRANSPORTER=nats://10.1.10.1:4222 -v /path/to/data:/app/db ghcr.io/flybyme/palm-tree:master
+```
+
+Replace `/path/to/data` with the path to your data directory.
+
 ## Services
 
 ### DHCP Service
