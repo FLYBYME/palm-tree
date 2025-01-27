@@ -74,14 +74,14 @@ module.exports = {
 		],
 
 		config: {
-            
+
 		},
-		onError(req, res, err) {
-			console.log(err)
-            res.setHeader("Content-Type", "text/plain");
-            res.writeHead(501);
-            res.end("Global error: " + err.message);
-        }
+		// onError(req, res, err) {
+		// 	console.log(err)
+		// 	res.setHeader("Content-Type", "text/plain");
+		// 	res.writeHead(501);
+		// 	res.end("Global error: " + err.message);
+		// }
 
 	},
 
@@ -125,7 +125,10 @@ module.exports = {
 			let res = await ctx.call("v1.accounts.roles.hasAccess", { roles: ctx.meta.roles, permissions: [permission] });
 
 			if (res !== true)
-				throw new UnAuthorizedError("You have no right for this operation!", 401, "ERR_HAS_NO_ACCESS", { roles: ctx.meta.roles });
+				throw new UnAuthorizedError(
+					"You have no right for this operation!",
+					401, "ERR_HAS_NO_ACCESS", { roles: ctx.meta.roles, permissions: [permission] }
+				);
 
 			return user
 		},
