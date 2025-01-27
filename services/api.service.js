@@ -64,7 +64,7 @@ module.exports = {
 				mergeParams: true,
 
 				aliases: {
-					"POST /v1/accounts/avatar": "multipart:accounts.avatar",
+					"POST /v1/accounts/avatar": "multipart:v1.accounts.avatar",
 				},
 
 				// Use bodyparser modules
