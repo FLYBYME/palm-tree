@@ -67,6 +67,12 @@ module.exports = {
 					"POST /v1/accounts/avatar": "multipart:v1.accounts.avatar",
 				},
 
+				busboyConfig: {
+                    limits: { files: 1 }
+                    // Can be defined limit event handlers
+                    // `onPartsLimit`, `onFilesLimit` or `onFieldsLimit`
+                },
+				
 				// Use bodyparser modules
 				bodyParsers: {
 					json: { limit: "2MB" },
