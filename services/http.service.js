@@ -8,9 +8,9 @@ const fs = require('fs').promises;
 const path = require('path');
 const mime = require('mime');
 const yaml = require('json2yaml')
-const handler = require('serve-handler');
 const { createReadStream, createWriteStream } = require('fs');
 const crypto = require('crypto');
+const tar = require('tar');
 
 const Config = require("config-service");
 
@@ -23,7 +23,7 @@ module.exports = {
     version: 1,
 
     mixins: [
-         Config.Mixin
+        Config.Mixin
     ],
 
     settings: {
@@ -72,6 +72,41 @@ module.exports = {
                 return cache;
             }
         },
+        extractFile: {
+            rest: {
+                method: "POST",
+                path: "/extractor",
+            },
+            params: {
+                file: { type: "string", optional: false },
+                path: { type: "string", optional: false },
+                kernel: { type: "string", optional: false },
+            },
+            async handler(ctx) {
+                const root = this.config.get('http.root');
+                const file = ctx.params.file;
+                const localPath = ctx.params.path;
+                const kernelName = ctx.params.kernel;
+
+                const kernel = await ctx.call('v1.kernels.lookup', { name: kernelName });
+                if (!kernel) {
+                    throw new MoleculerClientError(
+                        `Kernel name ${kernelName} not found`,
+                        404,
+                        "KERNEL_NOT_FOUND",
+                        { id: kernelName }
+                    );
+                }
+                // extract file to local path
+                await this.extractFile(ctx, file, localPath, kernel);
+
+                // read dir and create cache entry
+                const dir = path.resolve(`${root}/${localPath}`);
+                const files = await fs.readdir(dir);
+
+            }
+        },
+
 
         cache: {
             rest: {
@@ -523,7 +558,28 @@ module.exports = {
             });
 
             this.logger.info(`Node ${node.name} has been configured for K3OS. Control Node: ${node.controlNode}`);
-        }
+        },
+
+        /**
+         * Extract file from kernel
+         * 
+         * @param {Context} ctx - Moleculer context object
+         * @param {Object} file - File object
+         * @param {String} localPath - Local path
+         * @param {Object} kernel - Kernel object
+         * 
+         * @returns {Promise<void>}
+         */
+        async extractFile(ctx, file, localPath, kernel) {
+            // create dir
+            await fs.mkdir(localPath, { recursive: true });
+            // tar extract
+            await tar.extract({
+                file: file,
+                cwd: localPath,
+                strip: 1
+            });
+        },
 
     },
 

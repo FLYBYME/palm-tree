@@ -2,6 +2,7 @@
 
 const ApiGateway = require("moleculer-web");
 const { UnAuthorizedError } = ApiGateway.Errors;
+const cookie = require("cookie");
 
 
 module.exports = {
@@ -56,7 +57,7 @@ module.exports = {
 
 				camelCaseNames: true,
 
-				authentication: false,
+				authentication: true,
 				//authorization: true,
 
 				autoAliases: true,
@@ -89,7 +90,80 @@ module.exports = {
 	},
 
 	methods: {
-		
+		/**
+		 * Authenticate from request
+		 *
+		 * @param {Context} ctx
+		 * @param {Object} route
+		 * @param {IncomingRequest} req
+		 * @returns {Promise}
+		 */
+		async authenticate(ctx, route, req) {
+			let token;
+
+			// Get JWT token from Authorization header
+			const auth = req.headers["authorization"];
+			if (auth && auth.startsWith("Bearer ")) token = auth.slice(7);
+
+			// Get JWT token from cookie
+			if (!token && req.headers.cookie) {
+				const cookies = cookie.parse(req.headers.cookie);
+				token = cookies["jwt-token"];
+			}
+
+			ctx.meta.roles = ["public"];
+
+			// Verify JWT token
+			const user = await this.validateUserToken(ctx, token)
+
+			if (!req.$endpoint) {
+				return user
+			}
+
+			const permission = `${req.$endpoint.service.name}.${req.$endpoint.action.rawName}`
+
+			let res = await ctx.call("v1.accounts.roles.hasAccess", { roles: ctx.meta.roles, permissions: [permission] });
+
+			if (res !== true)
+				throw new UnAuthorizedError("You have no right for this operation!", 401, "ERR_HAS_NO_ACCESS", { roles: ctx.meta.roles });
+
+			return user
+		},
+		async validateUserToken(ctx, token) {
+			if (token) {
+
+				// Check the token in cache
+				let user = this.authCache.get(token);
+				if (!user) {
+					user = await ctx.call("v1.accounts.resolveToken", { token });
+					if (user) {
+						this.authCache.set(token, user);
+					} else {
+						return null
+					}
+				}
+
+				// remove public role
+				ctx.meta.roles = ctx.meta.roles.filter(r => r !== "public");
+				// Add authenticated role
+				ctx.meta.roles.push("authenticated");
+				// Add roles of user
+				if (Array.isArray(user.roles)) ctx.meta.roles.push(...user.roles);
+				// Set user & token to context meta
+				ctx.meta.token = token;
+				ctx.meta.userID = user.id;
+
+				//strip any scope actions from params.
+				if (!ctx.meta.roles.includes("administator")) {
+					delete ctx.params.scope;
+				}
+
+				// Reduce user fields (it will be transferred to other nodes)
+				return user;
+
+			}
+			return null;
+		}
 	},
 
 

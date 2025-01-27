@@ -18,7 +18,7 @@ module.exports = {
                 options: "./db/kernels.db"
             }
         }),
-         Config.Mixin
+        Config.Mixin
     ],
 
     settings: {
@@ -163,6 +163,33 @@ module.exports = {
 
                 const bootFile = await this.generateBootFile(ctx, node, kernel);
                 return bootFile;
+            }
+        },
+        downloadAlpine: {
+            rest: {
+                method: "GET",
+                path: "/downloadAlpine/:kernel"
+            },
+            params: {
+                kernel: { type: "string", optional: false },
+            },
+            async handler(ctx) {
+                const kernelVersion = ctx.params.kernel;
+                // https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/alpine-netboot-3.21.2-x86_64.tar.gz
+                // alpine/netboot/3.21.2/
+
+                const url = `https://dl-cdn.alpinelinux.org/alpine/v${kernelVersion}/releases/x86_64/alpine-netboot-${kernelVersion}-x86_64.tar.gz`;
+                const filename = `alpine-netboot-${kernelVersion}-x86_64.tar.gz`;
+                await ctx.call('v1.http.downloadFile', {
+                    url: url,
+                    path: `alpine/netboot/${kernelVersion}/${filename}`
+                });
+
+                await ctx.call('v1.http.extractFile', {
+                    file: `alpine/netboot/${kernelVersion}/${filename}`,
+                    path: `alpine/netboot/${kernelVersion}/`,
+                    kernel: 'alpine'
+                });
             }
         }
     },

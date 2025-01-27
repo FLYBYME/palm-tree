@@ -28,6 +28,7 @@
     "@moleculer/database": "^0.2.1",
     "@network-utils/dhcp": "^1.0.10",
     "config-service": "github:FLYBYME/config-service",
+    "cookie": "^1.0.2",
     "dhcp": "^0.2.20",
     "dhcp2": "github:lsongdev/node-dhcp",
     "dhcpjs": "^1.0.0",
@@ -43,6 +44,7 @@
     "serve-handler": "^6.1.6",
     "serve-static": "^1.15.0",
     "ssh2": "^1.16.0",
+    "tar": "^7.4.3",
     "tftp": "^0.1.2",
     "ws": "^8.18.0"
   },
