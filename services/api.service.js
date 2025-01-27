@@ -3,6 +3,7 @@
 const ApiGateway = require("moleculer-web");
 const { UnAuthorizedError } = ApiGateway.Errors;
 const cookie = require("cookie");
+const Busboy = require("busboy");
 
 
 module.exports = {
@@ -64,15 +65,17 @@ module.exports = {
 				mergeParams: true,
 
 				aliases: {
-					"POST /v1/accounts/avatar": "multipart:v1.accounts.avatar",
+					"POST /v1/accounts/avatar"(req, res) {
+						this.parseAvatarUploadedFile(req, res);
+					},
 				},
 
 				busboyConfig: {
-                    limits: { files: 1 }
-                    // Can be defined limit event handlers
-                    // `onPartsLimit`, `onFilesLimit` or `onFieldsLimit`
-                },
-				
+					limits: { files: 1 }
+					// Can be defined limit event handlers
+					// `onPartsLimit`, `onFilesLimit` or `onFieldsLimit`
+				},
+
 				// Use bodyparser modules
 				bodyParsers: {
 					json: { limit: "2MB" },
@@ -174,7 +177,25 @@ module.exports = {
 
 			}
 			return null;
-		}
+		},
+
+		async parseAvatarUploadedFile(req, res) {
+
+			const busboy = new Busboy({ headers: req.headers });
+			const files = {};
+
+			await new Promise((resolve, reject) => {
+				busboy.on("file", (fieldname, file, info) => {
+					files[fieldname] = { info, file };
+				});
+				busboy.on("finish", resolve);
+				busboy.on("error", reject);
+				req.pipe(busboy);
+			});
+			console.log(files)
+			return files
+		},
+
 	},
 
 
