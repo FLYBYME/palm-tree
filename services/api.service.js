@@ -1,9 +1,12 @@
 "use strict";
 
 const ApiGateway = require("moleculer-web");
-const { UnAuthorizedError } = ApiGateway.Errors;
+const { UnAuthorizedError, MoleculerClientError } = ApiGateway.Errors;
 const cookie = require("cookie");
 const Busboy = require("busboy");
+const fs = require("fs").promises;
+const path = require("path");
+const crypto = require("crypto");
 
 
 module.exports = {
@@ -68,12 +71,6 @@ module.exports = {
 					"POST /v1/accounts/avatar"(req, res) {
 						this.parseAvatarUploadedFile(req, res);
 					},
-				},
-
-				busboyConfig: {
-					limits: { files: 1 }
-					// Can be defined limit event handlers
-					// `onPartsLimit`, `onFilesLimit` or `onFieldsLimit`
 				},
 
 				// Use bodyparser modules
@@ -181,7 +178,7 @@ module.exports = {
 
 		async parseAvatarUploadedFile(req, res) {
 
-			const busboy = new Busboy({ headers: req.headers });
+			const busboy = Busboy({ headers: req.headers });
 			const files = {};
 
 			await new Promise((resolve, reject) => {
@@ -192,8 +189,25 @@ module.exports = {
 				busboy.on("error", reject);
 				req.pipe(busboy);
 			});
-			console.log(files)
-			return files
+			console.log(files);
+
+			if (!files.avatar) {
+				throw new UnAuthorizedError(
+					"You have no avatar file!",
+					401, "ERR_HAS_NO_AVATAR", {}
+				);
+			}
+
+			const file = files.avatar.file;
+			const filename = crypto.randomBytes(16).toString("hex");
+			const ext = path.extname(file.filename);
+			const avatar = `${filename}${ext}`;
+
+			await file.pipe(fs.createWriteStream(`./public/avatars/${avatar}`));
+
+			await this.broker.call("v1.accounts.updateAvatar", { id: req.meta.userID, avatar, info: files.avatar.info });
+
+			return { avatar };
 		},
 
 	},
