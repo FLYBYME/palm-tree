@@ -5,6 +5,7 @@ const { UnAuthorizedError, MoleculerClientError } = ApiGateway.Errors;
 const cookie = require("cookie");
 const Busboy = require("busboy");
 const fs = require("fs").promises;
+const { createWriteStream } = require('fs');
 const path = require("path");
 const crypto = require("crypto");
 
@@ -189,7 +190,7 @@ module.exports = {
 				busboy.on("error", reject);
 				req.pipe(busboy);
 			});
-			console.log(files);
+			console.log(files, req.$ctx);
 
 			if (!files.avatar) {
 				throw new UnAuthorizedError(
@@ -203,7 +204,13 @@ module.exports = {
 			const ext = path.extname(file.filename);
 			const avatar = `${filename}${ext}`;
 
-			await file.pipe(fs.createWriteStream(`./public/avatars/${avatar}`));
+			const writeStream = createWriteStream(`./public/avatars/${avatar}`);
+			file.pipe(writeStream);
+
+			await new Promise((resolve, reject) => {
+				writeStream.on("error", reject);
+				writeStream.on("finish", resolve);
+			});
 
 			return this.broker.call("v1.accounts.updateAvatar", {
 				id: req.meta.userID,
