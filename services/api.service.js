@@ -190,8 +190,10 @@ module.exports = {
 						const ext = path.extname(info.filename);
 						avatar = `${filename}${ext}`;
 
-						const writeStream = createWriteStream(`./public/avatars/${avatar}`);
+						const writeStream = createWriteStream(`/app/public/avatars/${avatar}`);
 						file.pipe(writeStream);
+
+						this.logger.info(`${req.socket.remoteAddress} uploading avatar`, info);
 					}
 				});
 				busboy.on("close", resolve);
