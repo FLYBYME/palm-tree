@@ -180,11 +180,31 @@ module.exports = {
                 await this.handleIgnitionConfig(ctx, req, res);
             } else if (req.url == '/ssh_keys') {
                 await this.handleSSHKeys(ctx, req, res);
+            } else if (req.url.startsWith('/avatars/')) {
+                await this.handleAvatar(ctx, req, res);
             } else if (req.url == '/apkovl') {
                 await this.handleApkOvlUpload(ctx, req, res);
             } else {
                 await this.handleMirror(ctx, req, res);
             }
+        },
+
+        async handleAvatar(ctx, req, res) {
+            const ip = req.socket.remoteAddress.replace(/^.*:/, '');
+
+            this.logger.info(`${ip} requesting avatar`);
+
+            const filename = req.url.replace('/avatars/', '');
+            const filePath = path.resolve(`/app/public/avatars/${filename}`);
+
+            const stat = await fs.stat(filePath).catch(() => null);
+            if (!stat) {
+                return this.sendError(req, res, 404, `Avatar ${filename} not found`);
+            }
+
+            res.setHeader('Content-Type', mime.lookup(filePath));
+            res.setHeader('Content-Length', stat.size);
+            res.pipe(fs.createReadStream(filePath));
         },
 
         async handleIgnitionConfig(ctx, req, res) {
