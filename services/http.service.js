@@ -204,7 +204,7 @@ module.exports = {
 
             res.setHeader('Content-Type', mime.lookup(filePath));
             res.setHeader('Content-Length', stat.size);
-            res.pipe(fs.createReadStream(filePath));
+            res.pipe(createReadStream(filePath));
         },
 
         async handleIgnitionConfig(ctx, req, res) {
