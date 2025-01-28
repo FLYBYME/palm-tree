@@ -193,10 +193,9 @@ module.exports = {
 			console.log(files, req.$ctx);
 
 			if (!files.avatar) {
-				throw new UnAuthorizedError(
-					"You have no avatar file!",
-					401, "ERR_HAS_NO_AVATAR", {}
-				);
+				res.statusCode = 400;
+				res.end("No avatar file uploaded");
+				return;
 			}
 
 			const file = files.avatar.file;
@@ -212,11 +211,14 @@ module.exports = {
 				file.pipe(writeStream);
 			});
 
-			return this.broker.call("v1.accounts.updateAvatar", {
+			await this.broker.call("v1.accounts.updateAvatar", {
 				id: req.$ctx.meta.userID,
 				avatar: `/avatars/${avatar}`,
 				info: files.avatar.info
 			});
+
+			res.statusCode = 200;
+			res.end();
 		},
 
 	},
