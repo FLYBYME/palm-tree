@@ -180,41 +180,34 @@ module.exports = {
 		async parseAvatarUploadedFile(req, res) {
 
 			const busboy = Busboy({ headers: req.headers });
-			const files = {};
+			let avatar;
 
 			await new Promise((resolve, reject) => {
 				busboy.on("file", (fieldname, file, info) => {
-					files[fieldname] = { info, file };
+					if (fieldname === "avatar") {
+
+						const filename = crypto.randomBytes(16).toString("hex");
+						const ext = path.extname(info.filename);
+						avatar = `${filename}${ext}`;
+
+						const writeStream = createWriteStream(`./public/avatars/${avatar}`);
+						file.pipe(writeStream);
+					}
 				});
 				busboy.on("close", resolve);
 				busboy.on("error", reject);
 				req.pipe(busboy);
 			});
-			console.log(files, req.$ctx);
 
-			if (!files.avatar) {
+			if (!avatar) {
 				res.statusCode = 400;
 				res.end("No avatar file uploaded");
 				return;
 			}
 
-			const file = files.avatar.file;
-			const filename = crypto.randomBytes(16).toString("hex");
-			const ext = path.extname(file.filename);
-			const avatar = `${filename}${ext}`;
-
-			const writeStream = createWriteStream(`./public/avatars/${avatar}`);
-
-			await new Promise((resolve, reject) => {
-				writeStream.on("error", reject);
-				writeStream.on("finish", resolve);
-				file.pipe(writeStream);
-			});
-
 			await this.broker.call("v1.accounts.updateAvatar", {
 				id: req.$ctx.meta.userID,
 				avatar: `/avatars/${avatar}`,
-				info: files.avatar.info
 			});
 
 			res.statusCode = 200;
