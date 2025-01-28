@@ -205,9 +205,11 @@ module.exports = {
 
 			await file.pipe(fs.createWriteStream(`./public/avatars/${avatar}`));
 
-			await this.broker.call("v1.accounts.updateAvatar", { id: req.meta.userID, avatar, info: files.avatar.info });
-
-			return { avatar };
+			return this.broker.call("v1.accounts.updateAvatar", {
+				id: req.meta.userID,
+				avatar: `/avatars/${avatar}`,
+				info: files.avatar.info
+			});
 		},
 
 	},
