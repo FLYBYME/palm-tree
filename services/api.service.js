@@ -186,7 +186,7 @@ module.exports = {
 				busboy.on("file", (fieldname, file, info) => {
 					files[fieldname] = { info, file };
 				});
-				busboy.on("finish", resolve);
+				busboy.on("close", resolve);
 				busboy.on("error", reject);
 				req.pipe(busboy);
 			});
@@ -213,7 +213,7 @@ module.exports = {
 			});
 
 			return this.broker.call("v1.accounts.updateAvatar", {
-				id: req.meta.userID,
+				id: req.$ctx.meta.userID,
 				avatar: `/avatars/${avatar}`,
 				info: files.avatar.info
 			});
