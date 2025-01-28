@@ -9,12 +9,14 @@ const { createWriteStream } = require('fs');
 const path = require("path");
 const crypto = require("crypto");
 
+const Config = require("config-service");
 
 module.exports = {
 	name: "api",
 	version: 1,
 	mixins: [
-		ApiGateway
+		ApiGateway,
+		Config.Mixin
 	],
 
 	metadata: {},
@@ -83,14 +85,9 @@ module.exports = {
 		],
 
 		config: {
-
+			"http.root": "../public",
+			"api.endpoint": "http://192.168.1.143:4000"
 		},
-		// onError(req, res, err) {
-		// 	console.log(err)
-		// 	res.setHeader("Content-Type", "text/plain");
-		// 	res.writeHead(501);
-		// 	res.end("Global error: " + err.message);
-		// }
 
 	},
 
@@ -209,7 +206,7 @@ module.exports = {
 
 			await this.broker.call("v1.accounts.updateAvatar", {
 				id: req.$ctx.meta.userID,
-				avatar: `/avatars/${avatar}`,
+				avatar: `${this.config.get("api.endpoint")}/avatars/${avatar}`,
 			});
 
 			res.statusCode = 200;
