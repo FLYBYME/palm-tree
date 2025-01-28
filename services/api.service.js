@@ -205,11 +205,11 @@ module.exports = {
 			const avatar = `${filename}${ext}`;
 
 			const writeStream = createWriteStream(`./public/avatars/${avatar}`);
-			file.pipe(writeStream);
 
 			await new Promise((resolve, reject) => {
 				writeStream.on("error", reject);
 				writeStream.on("finish", resolve);
+				file.pipe(writeStream);
 			});
 
 			return this.broker.call("v1.accounts.updateAvatar", {
